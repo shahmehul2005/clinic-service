@@ -68,17 +68,19 @@ const Dashboard = () => {
     // Combine date and time into ISO string
     const appointmentDateTime = new Date(`${newDate}T${newTime}`).toISOString();
     
+    // Construct payload based on user's exact schema
+    const payload = {
+      doctor_id: "default-doctor", // User's schema requires doctor_id instead of clinic_id
+      phone_number: newPatientPhone,
+      appointment_time: appointmentDateTime,
+      status: 'booked'
+    };
+
+    // Note: patient_name is omitted because it doesn't exist in the user's current schema.
+    
     const { data, error } = await supabase
       .from('appointments')
-      .insert([
-        {
-          clinic_id: 1, // Default clinic ID for MVP
-          phone_number: newPatientPhone,
-          patient_name: newPatientName,
-          appointment_time: appointmentDateTime,
-          status: 'booked'
-        }
-      ])
+      .insert([payload])
       .select();
       
     if (error) {
