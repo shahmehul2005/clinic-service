@@ -2,17 +2,16 @@ import { Link } from 'react-router-dom';
 
 const Navbar = () => {
   return (
-    <nav style={{ padding: '1.5rem 0', position: 'absolute', top: 0, width: '100%', zIndex: 10 }}>
-      <div className="container" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ fontSize: '1.5rem', fontWeight: 700, letterSpacing: '-0.5px' }}>
-          Platform<span className="text-gradient">X</span>
-        </div>
-        <div style={{ display: 'flex', gap: '2rem', alignItems: 'center' }}>
-          <a href="#features" style={{ color: 'hsl(var(--text-secondary))', transition: 'color 0.2s' }} onMouseOver={(e) => e.target.style.color = 'white'} onMouseOut={(e) => e.target.style.color = 'hsl(var(--text-secondary))'}>Features</a>
-          <a href="#solutions" style={{ color: 'hsl(var(--text-secondary))', transition: 'color 0.2s' }} onMouseOver={(e) => e.target.style.color = 'white'} onMouseOut={(e) => e.target.style.color = 'hsl(var(--text-secondary))'}>Solutions</a>
-          <a href="#pricing" style={{ color: 'hsl(var(--text-secondary))', transition: 'color 0.2s' }} onMouseOver={(e) => e.target.style.color = 'white'} onMouseOut={(e) => e.target.style.color = 'hsl(var(--text-secondary))'}>Pricing</a>
-          <Link to="/login" className="btn btn-glass" style={{ padding: '0.5rem 1rem', fontSize: '0.9rem' }}>Login</Link>
-        </div>
+    <nav style={{ padding: '1.25rem 2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-card)', borderBottom: '1px solid var(--border-color)', position: 'sticky', top: 0, zIndex: 100 }}>
+      <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-main)', letterSpacing: '-0.5px' }}>
+        ClinicOS
+      </div>
+      
+      <div style={{ display: 'flex', gap: '2rem', alignItems: 'center' }}>
+        <a href="#features" style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', fontWeight: 500 }}>Features</a>
+        <a href="#pricing" style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', fontWeight: 500 }}>Pricing</a>
+        <Link to="/login" className="btn btn-outline">Log In</Link>
+        <button className="btn btn-primary">Book a Demo</button>
       </div>
     </nav>
   );

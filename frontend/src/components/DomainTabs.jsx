@@ -1,72 +1,104 @@
 import { useState } from 'react';
+import { Stethoscope, GraduationCap, Building2, Briefcase } from 'lucide-react';
 
 const DomainTabs = () => {
-  const [activeTab, setActiveTab] = useState('clinic');
+  const [activeTab, setActiveTab] = useState('clinics');
 
-  const tabs = [
-    { id: 'clinic', label: 'For Clinics' },
-    { id: 'school', label: 'For Schools' },
-    { id: 'coaching', label: 'For Coaching' },
-    { id: 'exporter', label: 'For Exporters' }
+  const domains = [
+    { id: 'clinics', label: 'For Clinics', icon: <Stethoscope size={18} /> },
+    { id: 'schools', label: 'For Schools', icon: <GraduationCap size={18} /> },
+    { id: 'coachings', label: 'For Coachings', icon: <Building2 size={18} /> },
+    { id: 'exporters', label: 'For Exporters', icon: <Briefcase size={18} /> }
   ];
 
-  const content = {
-    clinic: {
-      title: 'Revolutionize Patient Care',
-      desc: 'Our clinic management system provides end-to-end automation. From appointment scheduling to electronic health records (EHR) and billing.'
-    },
-    school: {
-      title: 'Empower Next-Gen Learning',
-      desc: 'A complete ERP for schools. Manage admissions, fee collection, attendance, and parent-teacher communication in one dashboard.'
-    },
-    coaching: {
-      title: 'Scale Your Institute',
-      desc: 'Deliver online classes, distribute DRM-protected study materials, and conduct AI-proctored mock tests.'
-    },
-    exporter: {
-      title: 'Global Trade Made Easy',
-      desc: 'Handle complex export documentation, track shipments in real-time, and manage multi-currency finances without the headache.'
-    }
-  };
-
   return (
-    <section id="solutions" className="container" style={{ padding: '4rem 1.5rem', marginBottom: '4rem' }}>
-      <div className="glass" style={{ padding: '1rem', borderRadius: '1.5rem' }}>
-        <div style={{ display: 'flex', gap: '1rem', overflowX: 'auto', paddingBottom: '1rem', borderBottom: '1px solid var(--glass-border)' }}>
-          {tabs.map(tab => (
+    <div style={{ padding: '6rem 2rem', background: 'var(--bg-card)', borderTop: '1px solid var(--border-color)', borderBottom: '1px solid var(--border-color)' }}>
+      <div style={{ maxWidth: '1000px', margin: '0 auto' }}>
+        
+        <div style={{ textAlign: 'center', marginBottom: '4rem' }}>
+          <h2 style={{ fontSize: '2.5rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '1rem' }}>
+            One Platform. Any Domain.
+          </h2>
+          <p style={{ fontSize: '1.125rem', color: 'var(--text-secondary)' }}>
+            The AI logic adapts seamlessly to your specific business rules and terminology.
+          </p>
+        </div>
+
+        {/* Tabs Navigation */}
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '3rem' }}>
+          {domains.map(domain => (
             <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
+              key={domain.id}
+              onClick={() => setActiveTab(domain.id)}
               style={{
-                background: activeTab === tab.id ? 'rgba(255,255,255,0.1)' : 'transparent',
-                color: activeTab === tab.id ? 'white' : 'hsl(var(--text-secondary))',
-                border: 'none',
                 padding: '0.75rem 1.5rem',
-                borderRadius: '0.75rem',
-                cursor: 'pointer',
+                borderRadius: '999px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
                 fontWeight: 600,
-                transition: 'all 0.2s',
-                whiteSpace: 'nowrap'
+                fontSize: '0.9rem',
+                transition: 'all 0.2s ease',
+                background: activeTab === domain.id ? 'var(--primary)' : '#f1f5f9',
+                color: activeTab === domain.id ? 'white' : 'var(--text-secondary)',
+                border: activeTab === domain.id ? '1px solid var(--primary)' : '1px solid transparent'
               }}
             >
-              {tab.label}
+              {domain.icon} {domain.label}
             </button>
           ))}
         </div>
-        
-        <div style={{ padding: '3rem 2rem', minHeight: '250px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-          <h3 style={{ fontSize: '2rem', marginBottom: '1rem', color: 'white' }}>
-            {content[activeTab].title}
-          </h3>
-          <p style={{ color: 'hsl(var(--text-secondary))', fontSize: '1.1rem', maxWidth: '800px', lineHeight: 1.6 }}>
-            {content[activeTab].desc}
-          </p>
-          <div style={{ marginTop: '2rem' }}>
-            <button className="btn btn-primary hover-lift">Learn More</button>
-          </div>
+
+        {/* Tab Content */}
+        <div className="card" style={{ padding: '3rem', textAlign: 'center', minHeight: '300px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
+          {activeTab === 'clinics' && (
+            <>
+              <div style={{ width: '64px', height: '64px', background: '#eff6ff', borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)', marginBottom: '1.5rem' }}>
+                <Stethoscope size={32} />
+              </div>
+              <h3 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '1rem' }}>Patient Appointment Scheduling</h3>
+              <p style={{ color: 'var(--text-secondary)', maxWidth: '500px', margin: '0 auto' }}>
+                AI handles patient inquiries, books slots based on doctor availability, and syncs directly to the receptionist's live queue.
+              </p>
+            </>
+          )}
+          {activeTab === 'schools' && (
+            <>
+              <div style={{ width: '64px', height: '64px', background: '#eff6ff', borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)', marginBottom: '1.5rem' }}>
+                <GraduationCap size={32} />
+              </div>
+              <h3 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '1rem' }}>Parent-Teacher Meetings</h3>
+              <p style={{ color: 'var(--text-secondary)', maxWidth: '500px', margin: '0 auto' }}>
+                Automate PTM scheduling. Parents text the school number, and the AI books a 10-minute slot without any overlap.
+              </p>
+            </>
+          )}
+          {activeTab === 'coachings' && (
+            <>
+              <div style={{ width: '64px', height: '64px', background: '#eff6ff', borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)', marginBottom: '1.5rem' }}>
+                <Building2 size={32} />
+              </div>
+              <h3 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '1rem' }}>Student Enrollments</h3>
+              <p style={{ color: 'var(--text-secondary)', maxWidth: '500px', margin: '0 auto' }}>
+                Answer curriculum FAQs automatically and schedule trial classes or counseling sessions with administrators.
+              </p>
+            </>
+          )}
+          {activeTab === 'exporters' && (
+            <>
+              <div style={{ width: '64px', height: '64px', background: '#eff6ff', borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)', marginBottom: '1.5rem' }}>
+                <Briefcase size={32} />
+              </div>
+              <h3 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '1rem' }}>Client Consultations</h3>
+              <p style={{ color: 'var(--text-secondary)', maxWidth: '500px', margin: '0 auto' }}>
+                Schedule global buyer meetings across different time zones effortlessly via WhatsApp AI.
+              </p>
+            </>
+          )}
         </div>
+
       </div>
-    </section>
+    </div>
   );
 };
 
