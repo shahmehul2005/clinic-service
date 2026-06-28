@@ -26,6 +26,19 @@ const Dashboard = () => {
     fetchAppointments();
   }, []);
 
+  const handleUpdateStatus = async (id, newStatus) => {
+    const { error } = await supabase
+      .from('appointments')
+      .update({ status: newStatus })
+      .eq('id', id);
+      
+    if (!error) {
+      setAppointments(prev => prev.map(apt => apt.id === id ? { ...apt, status: newStatus } : apt));
+    } else {
+      console.error("Error updating status:", error);
+    }
+  };
+
   const handleLogout = async () => {
     await logout();
     navigate('/');
@@ -82,28 +95,61 @@ const Dashboard = () => {
           </div>
         </div>
 
-        <h2 style={{ fontSize: '1.5rem', marginBottom: '1.5rem' }}>Recent Appointments (Live from Supabase)</h2>
-        <div className="glass" style={{ padding: '2rem', borderRadius: '1rem' }}>
+        <h2 style={{ fontSize: '1.5rem', marginBottom: '1.5rem' }}>Live Patient Queue</h2>
+        <div className="glass" style={{ padding: '2rem', borderRadius: '1rem', overflowX: 'auto' }}>
           {appointments.length === 0 ? (
-             <p style={{ color: 'hsl(var(--text-secondary))' }}>No appointments found. (Ensure your Supabase keys are set and the 'appointments' table exists!)</p>
+             <p style={{ color: 'hsl(var(--text-secondary))' }}>No appointments currently in the queue.</p>
           ) : (
-            <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
+            <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse', minWidth: '800px' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--glass-border)' }}>
                   <th style={{ padding: '1rem', color: 'hsl(var(--text-secondary))' }}>Patient Name</th>
+                  <th style={{ padding: '1rem', color: 'hsl(var(--text-secondary))' }}>Phone Number</th>
                   <th style={{ padding: '1rem', color: 'hsl(var(--text-secondary))' }}>Time</th>
                   <th style={{ padding: '1rem', color: 'hsl(var(--text-secondary))' }}>Status</th>
+                  <th style={{ padding: '1rem', color: 'hsl(var(--text-secondary))', textAlign: 'right' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {appointments.map((apt, i) => (
-                  <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                {appointments.map((apt) => (
+                  <tr key={apt.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                     <td style={{ padding: '1rem' }}>{apt.patient_name || 'Unknown'}</td>
-                    <td style={{ padding: '1rem' }}>{new Date(apt.created_at).toLocaleTimeString()}</td>
+                    <td style={{ padding: '1rem', color: 'hsl(var(--text-secondary))' }}>{apt.phone_number}</td>
+                    <td style={{ padding: '1rem' }}>{new Date(apt.appointment_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</td>
                     <td style={{ padding: '1rem' }}>
-                      <span style={{ padding: '0.25rem 0.75rem', borderRadius: '999px', background: 'rgba(56, 189, 248, 0.2)', color: '#38bdf8', fontSize: '0.85rem' }}>
-                        {apt.status || 'Scheduled'}
+                      <span style={{ 
+                        padding: '0.25rem 0.75rem', 
+                        borderRadius: '999px', 
+                        background: apt.status === 'arrived' ? 'rgba(52, 211, 153, 0.2)' : apt.status === 'completed' ? 'rgba(167, 139, 250, 0.2)' : 'rgba(56, 189, 248, 0.2)', 
+                        color: apt.status === 'arrived' ? '#34d399' : apt.status === 'completed' ? '#a78bfa' : '#38bdf8', 
+                        fontSize: '0.85rem',
+                        textTransform: 'capitalize'
+                      }}>
+                        {apt.status}
                       </span>
+                    </td>
+                    <td style={{ padding: '1rem', textAlign: 'right', display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                      {apt.status === 'booked' && (
+                        <button 
+                          onClick={() => handleUpdateStatus(apt.id, 'arrived')}
+                          className="btn btn-glass" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', borderColor: '#34d399', color: '#34d399' }}>
+                          Mark Arrived
+                        </button>
+                      )}
+                      {(apt.status === 'booked' || apt.status === 'arrived') && (
+                        <button 
+                          onClick={() => handleUpdateStatus(apt.id, 'completed')}
+                          className="btn btn-glass" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', borderColor: '#a78bfa', color: '#a78bfa' }}>
+                          Complete
+                        </button>
+                      )}
+                      {apt.status !== 'completed' && apt.status !== 'cancelled' && (
+                        <button 
+                          onClick={() => handleUpdateStatus(apt.id, 'cancelled')}
+                          className="btn btn-glass" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', borderColor: '#ef4444', color: '#ef4444' }}>
+                          Cancel
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}

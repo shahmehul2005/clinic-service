@@ -3,3 +3,4 @@ uvicorn
 supabase
 google-adk
 python-dotenv
+requests
