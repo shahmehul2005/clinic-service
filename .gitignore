@@ -1,26 +1,14 @@
-# Environments
-.env
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
+# Node dependencies
+frontend/node_modules/
+frontend/dist/
+frontend/npm-debug.log
 
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
+# Environment variables
+frontend/.env.local
+frontend/.env.*.local
 
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# IDEs
-.idea/
-.vscode/
-*.swp
-*.swo
-
-# MacOS
-.DS_Store
+# Python dependencies
+backend/__pycache__/
+backend/*.py[cod]
+backend/*$py.class
+backend/.env
