@@ -1,7 +1,7 @@
 import { useAuth } from '../context/AuthContext';
 import { 
   Home as HomeIcon, Calendar, Users, 
-  Search, Clock, CheckCircle2, User, XCircle, LifeBuoy, HeartPulse
+  Search, Clock, CheckCircle2, User, XCircle, LifeBuoy, HeartPulse, Trash2
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
@@ -12,6 +12,14 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const [appointments, setAppointments] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Modal State
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [newPatientName, setNewPatientName] = useState('');
+  const [newPatientPhone, setNewPatientPhone] = useState('');
+  const [newDate, setNewDate] = useState('');
+  const [newTime, setNewTime] = useState('');
+  const [submitError, setSubmitError] = useState('');
 
   useEffect(() => {
     const fetchAppointments = async () => {
@@ -35,6 +43,58 @@ const Dashboard = () => {
       
     if (!error) {
       setAppointments(prev => prev.map(apt => apt.id === id ? { ...apt, status: newStatus } : apt));
+    }
+  };
+
+  const handleDeleteAppointment = async (id) => {
+    if (!window.confirm("Are you sure you want to permanently delete this appointment?")) return;
+    
+    const { error } = await supabase
+      .from('appointments')
+      .delete()
+      .eq('id', id);
+      
+    if (!error) {
+      setAppointments(prev => prev.filter(apt => apt.id !== id));
+    } else {
+      alert("Error deleting appointment: " + error.message);
+    }
+  };
+
+  const handleAddAppointment = async (e) => {
+    e.preventDefault();
+    setSubmitError('');
+    
+    // Combine date and time into ISO string
+    const appointmentDateTime = new Date(`${newDate}T${newTime}`).toISOString();
+    
+    const { data, error } = await supabase
+      .from('appointments')
+      .insert([
+        {
+          clinic_id: 1, // Default clinic ID for MVP
+          phone_number: newPatientPhone,
+          patient_name: newPatientName,
+          appointment_time: appointmentDateTime,
+          status: 'booked'
+        }
+      ])
+      .select();
+      
+    if (error) {
+      if (error.code === '23505') { // Postgres Unique Constraint Violation
+        setSubmitError("Slot already booked! Please select a different time.");
+      } else {
+        setSubmitError(error.message);
+      }
+    } else if (data) {
+      // Success
+      setAppointments(prev => [...prev, data[0]].sort((a, b) => new Date(a.appointment_time) - new Date(b.appointment_time)));
+      setIsModalOpen(false);
+      setNewPatientName('');
+      setNewPatientPhone('');
+      setNewDate('');
+      setNewTime('');
     }
   };
 
@@ -65,7 +125,7 @@ const Dashboard = () => {
   };
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg-page)' }}>
+    <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg-page)', position: 'relative' }}>
       {/* Sidebar */}
       <aside style={{ width: '280px', padding: '1.5rem', display: 'flex', flexDirection: 'column', background: 'white', borderRight: '1px solid var(--border-color)' }}>
         
@@ -118,16 +178,21 @@ const Dashboard = () => {
       <main style={{ flexGrow: 1, padding: '2.5rem', overflowY: 'auto' }}>
         
         {/* Header */}
-        <header style={{ marginBottom: '2rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--v0-blue)', fontWeight: 500, fontSize: '0.9rem', marginBottom: '0.5rem' }}>
-            <Calendar size={18} /> Sunday, June 28
+        <header style={{ marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--v0-blue)', fontWeight: 500, fontSize: '0.9rem', marginBottom: '0.5rem' }}>
+              <Calendar size={18} /> Sunday, June 28
+            </div>
+            <h1 style={{ fontSize: '2.25rem', fontWeight: 800, color: 'var(--text-main)', letterSpacing: '-0.5px' }}>
+              Good morning, Susan
+            </h1>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '1rem', marginTop: '0.25rem' }}>
+              Here is everyone arriving at the clinic today.
+            </p>
           </div>
-          <h1 style={{ fontSize: '2.25rem', fontWeight: 800, color: 'var(--text-main)', letterSpacing: '-0.5px' }}>
-            Good morning, Susan
-          </h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '1rem', marginTop: '0.25rem' }}>
-            Here is everyone arriving at the clinic today.
-          </p>
+          <button onClick={() => setIsModalOpen(true)} className="btn-primary" style={{ padding: '0.75rem 1.5rem', fontSize: '1rem' }}>
+            + New Appointment
+          </button>
         </header>
 
         {/* Stat Cards */}
@@ -241,6 +306,11 @@ const Dashboard = () => {
                       {(apt.status === 'completed' || apt.status === 'cancelled') && (
                         <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>No action needed</span>
                       )}
+                      
+                      {/* Delete Icon */}
+                      <button onClick={() => handleDeleteAppointment(apt.id)} style={{ padding: '0.5rem', marginLeft: '0.5rem', color: 'var(--text-secondary)' }} title="Delete Record">
+                        <Trash2 size={16} style={{ cursor: 'pointer' }} onMouseOver={(e) => e.currentTarget.style.color = 'var(--v0-red)'} onMouseOut={(e) => e.currentTarget.style.color = 'var(--text-secondary)'} />
+                      </button>
                     </td>
                   </tr>
                 ))
@@ -249,6 +319,45 @@ const Dashboard = () => {
           </table>
         </div>
       </main>
+
+      {/* Add Appointment Modal */}
+      {isModalOpen && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div className="card" style={{ width: '100%', maxWidth: '400px', padding: '2rem' }}>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '1.5rem' }}>Add New Patient</h2>
+            
+            {submitError && (
+              <div style={{ padding: '0.75rem', background: 'var(--v0-red-light)', color: 'var(--v0-red)', borderRadius: '6px', fontSize: '0.875rem', marginBottom: '1rem', border: '1px solid #fecaca' }}>
+                {submitError}
+              </div>
+            )}
+
+            <form onSubmit={handleAddAppointment} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem', color: 'var(--text-main)' }}>Patient Name</label>
+                <input type="text" required className="form-input" value={newPatientName} onChange={(e) => setNewPatientName(e.target.value)} placeholder="John Doe" />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem', color: 'var(--text-main)' }}>Phone Number</label>
+                <input type="text" required className="form-input" value={newPatientPhone} onChange={(e) => setNewPatientPhone(e.target.value)} placeholder="+1 (555) 000-0000" />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem', color: 'var(--text-main)' }}>Date</label>
+                <input type="date" required className="form-input" value={newDate} onChange={(e) => setNewDate(e.target.value)} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem', color: 'var(--text-main)' }}>Time</label>
+                <input type="time" required className="form-input" value={newTime} onChange={(e) => setNewTime(e.target.value)} />
+              </div>
+              
+              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
+                <button type="button" onClick={() => setIsModalOpen(false)} className="btn-v0-outline" style={{ flex: 1, padding: '0.65rem', borderRadius: '6px' }}>Cancel</button>
+                <button type="submit" className="btn-v0-primary" style={{ flex: 1, padding: '0.65rem', borderRadius: '6px', border: 'none' }}>Book Slot</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
