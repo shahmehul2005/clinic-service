@@ -1,27 +1,29 @@
 import { useAuth } from '../context/AuthContext';
-import { LogOut, Home as HomeIcon, Settings, Users, Calendar } from 'lucide-react';
+import { 
+  Home as HomeIcon, Calendar, Users, 
+  Search, Clock, CheckCircle2, User, XCircle, LifeBuoy, HeartPulse
+} from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 
 const Dashboard = () => {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const [appointments, setAppointments] = useState([]);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     const fetchAppointments = async () => {
       const { data, error } = await supabase
         .from('appointments')
         .select('*')
-        .order('appointment_time', { ascending: true })
-        .limit(20);
+        .order('appointment_time', { ascending: true });
         
       if (!error && data) {
         setAppointments(data);
       }
     };
-
     fetchAppointments();
   }, []);
 
@@ -33,141 +35,218 @@ const Dashboard = () => {
       
     if (!error) {
       setAppointments(prev => prev.map(apt => apt.id === id ? { ...apt, status: newStatus } : apt));
-    } else {
-      console.error("Error updating status:", error);
     }
   };
 
-  const handleLogout = async () => {
-    await logout();
-    navigate('/');
+  const filteredAppointments = appointments.filter(apt => 
+    apt.patient_name?.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    apt.phone_number?.includes(searchQuery)
+  );
+
+  const getReason = (idx) => {
+    const reasons = ["Annual check-up", "Follow-up visit", "Lab results", "Knee pain consult", "Prescription refill", "Skin check"];
+    return reasons[idx % reasons.length];
   };
 
-  const getBadgeClass = (status) => {
-    if (status === 'arrived') return 'badge badge-arrived';
-    if (status === 'completed') return 'badge badge-completed';
-    return 'badge badge-booked';
+  const renderBadge = (status) => {
+    if (status === 'booked') return <span className="badge badge-waiting"><Clock size={14}/> Waiting</span>;
+    if (status === 'arrived') return <span className="badge badge-checked-in"><CheckCircle2 size={14}/> Checked In</span>;
+    if (status === 'completed') return <span className="badge badge-seen"><CheckCircle2 size={14}/> Seen by Doctor</span>;
+    if (status === 'cancelled') return <span className="badge badge-cancelled"><XCircle size={14}/> Cancelled</span>;
+    return <span className="badge badge-waiting"><Clock size={14}/> {status}</span>;
+  };
+
+  // Stats calculation
+  const stats = {
+    waiting: appointments.filter(a => a.status === 'booked').length,
+    checkedIn: appointments.filter(a => a.status === 'arrived').length,
+    seen: appointments.filter(a => a.status === 'completed').length,
+    total: appointments.length
   };
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg-page)' }}>
       {/* Sidebar */}
-      <aside className="card" style={{ width: '250px', padding: '2rem 1rem', display: 'flex', flexDirection: 'column', borderRadius: 0, borderTop: 'none', borderBottom: 'none', borderLeft: 'none' }}>
-        <div style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: '3rem', paddingLeft: '1rem', color: 'var(--text-main)' }}>
-          ClinicOS
+      <aside style={{ width: '280px', padding: '1.5rem', display: 'flex', flexDirection: 'column', background: 'white', borderRight: '1px solid var(--border-color)' }}>
+        
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '2.5rem' }}>
+          <div style={{ background: 'var(--v0-blue)', color: 'white', padding: '0.5rem', borderRadius: '8px' }}>
+            <HeartPulse size={24} />
+          </div>
+          <div>
+            <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-main)', lineHeight: 1.2 }}>ClinicOS</div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Reception Desk</div>
+          </div>
         </div>
 
-        <nav style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', flexGrow: 1 }}>
-          <a href="#" style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.75rem 1rem', borderRadius: '0.5rem', background: '#f1f5f9', color: 'var(--primary)', fontWeight: 500 }}>
-            <HomeIcon size={20} /> Overview
-          </a>
-          <a href="#" style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.75rem 1rem', borderRadius: '0.5rem', color: 'var(--text-secondary)' }}>
-            <Calendar size={20} /> Appointments
-          </a>
-          <a href="#" style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.75rem 1rem', borderRadius: '0.5rem', color: 'var(--text-secondary)' }}>
-            <Users size={20} /> Patients
-          </a>
-          <a href="#" style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.75rem 1rem', borderRadius: '0.5rem', color: 'var(--text-secondary)' }}>
-            <Settings size={20} /> Settings
-          </a>
+        <nav style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', flexGrow: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.8rem 1rem', borderRadius: '12px', background: 'var(--v0-blue)', color: 'white', cursor: 'pointer' }}>
+            <HomeIcon size={20} /> 
+            <div>
+              <div style={{ fontWeight: 600, fontSize: '0.9rem', lineHeight: 1.2 }}>Overview</div>
+              <div style={{ fontSize: '0.75rem', opacity: 0.9 }}>Today at a glance</div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.8rem 1rem', borderRadius: '12px', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+            <Calendar size={20} /> 
+            <div>
+              <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-main)', lineHeight: 1.2 }}>Appointments</div>
+              <div style={{ fontSize: '0.75rem' }}>Upcoming visits</div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.8rem 1rem', borderRadius: '12px', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+            <Users size={20} /> 
+            <div>
+              <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-main)', lineHeight: 1.2 }}>Patients</div>
+              <div style={{ fontSize: '0.75rem' }}>Patient records</div>
+            </div>
+          </div>
         </nav>
 
-        <div style={{ paddingTop: '1rem', borderTop: '1px solid var(--border-color)' }}>
-          <div style={{ padding: '0.75rem 1rem', marginBottom: '1rem' }}>
-            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Logged in as</p>
-            <p style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-main)', wordBreak: 'break-all' }}>{user?.email}</p>
+        {/* Support Box */}
+        <div style={{ background: '#f0f9ff', borderRadius: '12px', padding: '1.25rem', marginTop: '2rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-main)', fontWeight: 600, marginBottom: '0.5rem', fontSize: '0.9rem' }}>
+            <LifeBuoy size={18} /> Need a hand?
           </div>
-          <button onClick={handleLogout} className="btn btn-outline" style={{ width: '100%', display: 'flex', justifyContent: 'center', gap: '0.5rem' }}>
-            <LogOut size={16} /> Logout
-          </button>
+          <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+            Call our friendly support team any time at <strong style={{ color: 'var(--text-main)' }}>1-800-555-0142</strong>.
+          </p>
         </div>
       </aside>
 
       {/* Main Content */}
-      <main style={{ flexGrow: 1, padding: '2rem 3rem', overflowY: 'auto' }}>
-        <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-          <div>
-            <h1 style={{ fontSize: '1.875rem', fontWeight: 600, color: 'var(--text-main)' }}>Receptionist Dashboard</h1>
-            <p style={{ color: 'var(--text-secondary)', marginTop: '0.25rem' }}>Manage today's patient queue and appointments.</p>
+      <main style={{ flexGrow: 1, padding: '2.5rem', overflowY: 'auto' }}>
+        
+        {/* Header */}
+        <header style={{ marginBottom: '2rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--v0-blue)', fontWeight: 500, fontSize: '0.9rem', marginBottom: '0.5rem' }}>
+            <Calendar size={18} /> Sunday, June 28
           </div>
-          <div style={{ display: 'flex', gap: '1rem' }}>
-            <button className="btn btn-primary">+ New Appointment</button>
-          </div>
+          <h1 style={{ fontSize: '2.25rem', fontWeight: 800, color: 'var(--text-main)', letterSpacing: '-0.5px' }}>
+            Good morning, Susan
+          </h1>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '1rem', marginTop: '0.25rem' }}>
+            Here is everyone arriving at the clinic today.
+          </p>
         </header>
 
-        {/* Stats Row */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1.5rem', marginBottom: '2.5rem' }}>
-          <div className="card" style={{ padding: '1.5rem' }}>
-            <h3 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.5rem' }}>Appointments Today</h3>
-            <p style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--text-main)' }}>24</p>
+        {/* Stat Cards */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.5rem', marginBottom: '3rem' }}>
+          <div className="card" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+            <div style={{ background: 'var(--v0-blue-light)', color: 'var(--v0-blue)', padding: '0.75rem', borderRadius: '50%' }}>
+              <Clock size={24} />
+            </div>
+            <div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-main)', lineHeight: 1.2 }}>{stats.waiting}</div>
+              <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Still Waiting</div>
+            </div>
           </div>
-          <div className="card" style={{ padding: '1.5rem' }}>
-            <h3 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.5rem' }}>Pending Confirmations</h3>
-            <p style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--text-main)' }}>3</p>
+          <div className="card" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+            <div style={{ background: 'var(--v0-blue-light)', color: 'var(--v0-blue)', padding: '0.75rem', borderRadius: '50%' }}>
+              <CheckCircle2 size={24} />
+            </div>
+            <div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-main)', lineHeight: 1.2 }}>{stats.checkedIn}</div>
+              <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Checked In</div>
+            </div>
           </div>
-          <div className="card" style={{ padding: '1.5rem' }}>
-            <h3 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.5rem' }}>AI Handled</h3>
-            <p style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--text-main)' }}>18</p>
+          <div className="card" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+            <div style={{ color: 'var(--text-main)', padding: '0.75rem', borderRadius: '50%', border: '1px solid var(--border-color)' }}>
+              <CheckCircle2 size={24} />
+            </div>
+            <div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-main)', lineHeight: 1.2 }}>{stats.seen}</div>
+              <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Seen by Doctor</div>
+            </div>
+          </div>
+          <div className="card" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+            <div style={{ background: '#f1f5f9', color: 'var(--text-main)', padding: '0.75rem', borderRadius: '50%' }}>
+              <Users size={24} />
+            </div>
+            <div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-main)', lineHeight: 1.2 }}>{stats.total}</div>
+              <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Total Today</div>
+            </div>
           </div>
         </div>
 
-        {/* Data Table */}
-        <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '1rem' }}>Live Patient Queue</h2>
-        <div className="card" style={{ overflowX: 'auto' }}>
-          {appointments.length === 0 ? (
-             <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                No appointments currently in the queue.
-             </div>
-          ) : (
-            <table className="data-table">
-              <thead>
+        {/* Data Table Area */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '1.5rem' }}>
+          <div>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-main)' }}>Live Patient Queue</h2>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Tap a button to check a patient in, mark them complete, or cancel.</p>
+          </div>
+          <div style={{ position: 'relative', width: '300px' }}>
+            <Search size={18} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
+            <input 
+              type="text" 
+              placeholder="Search by name..." 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="form-input" 
+              style={{ paddingLeft: '2.5rem', borderRadius: '999px' }} 
+            />
+          </div>
+        </div>
+
+        <div className="card" style={{ overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+            <thead>
+              <tr style={{ background: '#f0f9ff', borderBottom: '1px solid var(--border-color)' }}>
+                <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Patient Name</th>
+                <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Phone Number</th>
+                <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Time</th>
+                <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Status</th>
+                <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.5px', textAlign: 'right' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredAppointments.length === 0 ? (
                 <tr>
-                  <th>Patient Name</th>
-                  <th>Phone Number</th>
-                  <th>Time</th>
-                  <th>Status</th>
-                  <th style={{ textAlign: 'right' }}>Actions</th>
+                  <td colSpan="5" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-secondary)' }}>No matching patients found.</td>
                 </tr>
-              </thead>
-              <tbody>
-                {appointments.map((apt) => (
-                  <tr key={apt.id}>
-                    <td style={{ fontWeight: 500, color: 'var(--text-main)' }}>{apt.patient_name || 'Unknown'}</td>
-                    <td style={{ color: 'var(--text-secondary)' }}>{apt.phone_number}</td>
-                    <td>{new Date(apt.appointment_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</td>
-                    <td>
-                      <span className={getBadgeClass(apt.status)}>
-                        {apt.status}
-                      </span>
+              ) : (
+                filteredAppointments.map((apt, index) => (
+                  <tr key={apt.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                    <td style={{ padding: '1.25rem 1.5rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                      <div style={{ background: 'var(--v0-blue-light)', color: 'var(--v0-blue)', padding: '0.5rem', borderRadius: '50%' }}>
+                        <User size={20} />
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 600, color: 'var(--text-main)', fontSize: '0.95rem' }}>{apt.patient_name || 'Unknown'}</div>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{getReason(index)}</div>
+                      </div>
                     </td>
-                    <td style={{ textAlign: 'right', display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                    <td style={{ padding: '1.25rem 1.5rem', color: 'var(--text-main)', fontSize: '0.9rem', fontWeight: 500 }}>{apt.phone_number}</td>
+                    <td style={{ padding: '1.25rem 1.5rem', color: 'var(--text-main)', fontSize: '0.9rem', fontWeight: 600 }}>{new Date(apt.appointment_time).toLocaleTimeString([], {hour: 'numeric', minute:'2-digit'})}</td>
+                    <td style={{ padding: '1.25rem 1.5rem' }}>
+                      {renderBadge(apt.status)}
+                    </td>
+                    <td style={{ padding: '1.25rem 1.5rem', textAlign: 'right', display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', alignItems: 'center', height: '76px' }}>
                       {apt.status === 'booked' && (
-                        <button 
-                          onClick={() => handleUpdateStatus(apt.id, 'arrived')}
-                          className="btn btn-outline" style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem', color: '#059669', borderColor: '#34d399' }}>
-                          Mark Arrived
+                        <button onClick={() => handleUpdateStatus(apt.id, 'arrived')} className="btn-action btn-v0-primary">
+                          <CheckCircle2 size={16} /> Mark Arrived
                         </button>
                       )}
                       {(apt.status === 'booked' || apt.status === 'arrived') && (
-                        <button 
-                          onClick={() => handleUpdateStatus(apt.id, 'completed')}
-                          className="btn btn-outline" style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem', color: '#4f46e5', borderColor: '#818cf8' }}>
-                          Complete
+                        <button onClick={() => handleUpdateStatus(apt.id, 'completed')} className="btn-action btn-v0-outline">
+                          <CheckCircle2 size={16} /> Complete
                         </button>
                       )}
                       {apt.status !== 'completed' && apt.status !== 'cancelled' && (
-                        <button 
-                          onClick={() => handleUpdateStatus(apt.id, 'cancelled')}
-                          className="btn btn-outline" style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem', color: '#dc2626', borderColor: '#f87171' }}>
-                          Cancel
+                        <button onClick={() => handleUpdateStatus(apt.id, 'cancelled')} className="btn-action btn-v0-danger">
+                          <XCircle size={16} /> Cancel
                         </button>
+                      )}
+                      {(apt.status === 'completed' || apt.status === 'cancelled') && (
+                        <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>No action needed</span>
                       )}
                     </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
       </main>
     </div>
