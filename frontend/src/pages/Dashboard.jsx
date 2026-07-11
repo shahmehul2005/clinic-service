@@ -65,13 +65,19 @@ const Dashboard = () => {
     e.preventDefault();
     setSubmitError('');
     
+    const cleanPhone = newPatientPhone.replace(/\D/g, '');
+    if (cleanPhone.length !== 10) {
+      setSubmitError('Phone number must be exactly 10 digits.');
+      return;
+    }
+    
     // Combine date and time into ISO string
     const appointmentDateTime = new Date(`${newDate}T${newTime}`).toISOString();
     
     // Construct payload based on user's exact schema
     const payload = {
       doctor_id: "default-doctor", // User's schema requires doctor_id instead of clinic_id
-      phone_number: newPatientPhone,
+      phone_number: cleanPhone,
       appointment_time: appointmentDateTime,
       status: 'booked'
     };
@@ -341,7 +347,14 @@ const Dashboard = () => {
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem', color: 'var(--text-main)' }}>Phone Number</label>
-                <input type="text" required className="form-input" value={newPatientPhone} onChange={(e) => setNewPatientPhone(e.target.value)} placeholder="+1 (555) 000-0000" />
+                <input 
+                  type="text" 
+                  required 
+                  className="form-input" 
+                  value={newPatientPhone} 
+                  onChange={(e) => setNewPatientPhone(e.target.value.replace(/\D/g, '').slice(0, 10))} 
+                  placeholder="10-digit phone number (e.g. 5551234567)" 
+                />
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem', color: 'var(--text-main)' }}>Date</label>

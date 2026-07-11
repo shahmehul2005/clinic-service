@@ -1,4 +1,6 @@
 import os
+import hmac
+import hashlib
 import requests
 from fastapi import FastAPI, Request, Response
 from supabase import create_client, Client
@@ -19,6 +21,63 @@ supabase: Client = create_client(
 META_ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN")
 META_PHONE_NUMBER_ID = os.getenv("META_PHONE_NUMBER_ID")
 META_VERIFY_TOKEN = os.getenv("META_VERIFY_TOKEN", "clinic_os_secure_token_123")
+META_CLIENT_SECRET = os.getenv("META_CLIENT_SECRET")
+
+# Database Context Helpers
+def get_patient_clinic_context(phone_number: str) -> str:
+    """
+    Checks past appointments to find the patient's last visited clinic ID.
+    Args:
+        phone_number (str): The patient's WhatsApp number.
+    Returns:
+        str: The clinic UUID or None if new patient.
+    """
+    try:
+        response = supabase.table("appointments") \
+            .select("clinic_id") \
+            .eq("phone_number", phone_number) \
+            .order("appointment_time", desc=True) \
+            .limit(1) \
+            .execute()
+        if response.data:
+            return response.data[0]["clinic_id"]
+    except Exception as e:
+        print(f"Error looking up patient clinic history: {e}")
+    return None
+
+def get_all_clinics() -> list:
+    """Retrieves all registered clinics from the database."""
+    try:
+        response = supabase.table("clinics") \
+            .select("id, business_name") \
+            .execute()
+        return response.data if response.data else []
+    except Exception as e:
+        print(f"Error fetching clinics list: {e}")
+        return []
+
+# Signature Verification Helper
+async def verify_signature(request: Request) -> bool:
+    """Verifies that the request signature matches Meta client secret to secure the webhook."""
+    if not META_CLIENT_SECRET:
+        # Bypassed if no secret is set (useful for local dev/testing)
+        return True
+        
+    signature_header = request.headers.get("X-Hub-Signature-256")
+    if not signature_header or not signature_header.startswith("sha256="):
+        return False
+        
+    expected_sig = signature_header.split("sha256=")[1]
+    body = await request.body()
+    
+    computed_sig = hmac.new(
+        META_CLIENT_SECRET.encode("utf-8"),
+        body,
+        hashlib.sha256
+    ).hexdigest()
+    
+    return hmac.compare_digest(expected_sig, computed_sig)
+
 
 # 2. Define ADK Tools
 def check_availability(clinic_id: str, date_str: str) -> dict:
@@ -70,23 +129,25 @@ def book_slot(clinic_id: str, phone_number: str, date_str: str, time_str: str, p
         }).execute()
         return {"status": "success", "message": f"Successfully booked for {timestamp}."}
     except Exception as e:
-        # The unique SQL constraint (clinic_id, appointment_time) triggers an exception if the slot is taken
         error_msg = str(e)
         if "unique constraint" in error_msg.lower() or "duplicate key" in error_msg.lower() or "23505" in error_msg:
             return {"status": "error", "message": "CRITICAL: Slot taken. Apologize and offer another time."}
         return {"status": "error", "message": f"Database error: {error_msg}"}
 
-# 3. Initialize the Google ADK Agent
+# 3. Initialize the Google ADK Agent (Hindi by default)
 receptionist_agent = Agent(
     name="whatsapp_receptionist",
     model="gemini-2.5-flash",
-    description="A Hinglish-speaking clinic receptionist.",
+    description="A Hindi-speaking clinic receptionist.",
     instruction=(
-        "You are a helpful clinic receptionist. Speak entirely in polite Hinglish. "
-        "When a user asks for an appointment, use 'check_availability' to find open slots. "
-        "Ask the user to confirm a specific time and their name. "
-        "Once they confirm, use 'book_slot' to save it. "
-        "Keep messages extremely short and easy to read on WhatsApp."
+        "You are a helpful and polite clinic receptionist. Speak entirely in clean, polite Hindi (using Devanagari script). "
+        "Your goal is to book appointment slots for patients.\n\n"
+        "CLINIC ROUTING RULES:\n"
+        "1. Check the context injected at the start of the prompt.\n"
+        "2. If `clinic_id` is present, it means the patient has a history with this clinic. Immediately greet them, check availability for that clinic using `check_availability`, and guide them to confirm a slot. Do NOT ask them which clinic they want to visit.\n"
+        "3. If `IS_FIRST_TIME=True` or `clinic_id` is missing, you MUST present the list of available clinics (which will be provided in the context) and politely ask the patient to choose which clinic they would like to visit.\n"
+        "4. Once a clinic is identified or selected, ask for their preferred time and name, and then call `book_slot` to save the appointment.\n\n"
+        "Keep your WhatsApp messages warm, short, and formatted with spacing for readability."
     ),
     tools=[check_availability, book_slot]
 )
@@ -131,10 +192,13 @@ async def verify_webhook(request: Request):
             return Response(status_code=403)
     return Response(status_code=400)
 
-# 5. Webhook Ingestion (POST) for WhatsApp Messages
+# 5. Webhook Ingestion (POST) for WhatsApp Messages (Secured with Signature check)
 @app.post("/webhook")
 async def whatsapp_webhook(request: Request):
     """Handles incoming WhatsApp messages directly from Meta."""
+    if not await verify_signature(request):
+        return Response(status_code=401, content="Invalid signature validation.")
+
     try:
         payload = await request.json()
         
@@ -152,11 +216,19 @@ async def whatsapp_webhook(request: Request):
                         if message_obj.get("type") == "text":
                             user_message = message_obj["text"]["body"]
                             
-                            # Hardcode clinic_id for MVP, would normally look up based on META_PHONE_NUMBER_ID
-                            demo_clinic_id = "00000000-0000-0000-0000-000000000001"
+                            # Retrieve smart clinic context based on patient booking history
+                            clinic_id = get_patient_clinic_context(user_phone)
                             
-                            # Execute the agent, injecting the clinic_id context
-                            agent_prompt = f"[Context: clinic_id={demo_clinic_id}, phone={user_phone}]\nUser says: {user_message}"
+                            if clinic_id:
+                                # Returning patient - auto route to their clinic
+                                context = f"[Context: clinic_id={clinic_id}, phone={user_phone}]"
+                            else:
+                                # First time patient - fetch all available clinics to display options
+                                clinics = get_all_clinics()
+                                clinics_str = ", ".join([f"{c['business_name']} (ID: {c['id']})" for c in clinics])
+                                context = f"[Context: phone={user_phone}, IS_FIRST_TIME=True, available_clinics=[{clinics_str}]]"
+                                
+                            agent_prompt = f"{context}\nUser says: {user_message}"
                             response = receptionist_agent.run(agent_prompt)
                             
                             # Send reply back to Meta API
@@ -168,3 +240,7 @@ async def whatsapp_webhook(request: Request):
     except Exception as e:
         print(f"Webhook Error: {e}")
         return Response(status_code=500)
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("agent:app", host="0.0.0.0", port=8000, reload=True)
