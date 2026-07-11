@@ -2,6 +2,7 @@ import Navbar from '../components/Navbar';
 import Hero from '../components/Hero';
 import Features from '../components/Features';
 import DomainTabs from '../components/DomainTabs';
+import Footer from '../components/Footer';
 
 const Home = () => {
   return (
@@ -17,9 +18,7 @@ const Home = () => {
         <DomainTabs />
       </main>
       
-      <footer style={{ padding: '2rem 0', textAlign: 'center', borderTop: '1px solid var(--glass-border)' }}>
-        <p style={{ color: 'hsl(var(--text-secondary))' }}>© {new Date().getFullYear()} PlatformX. All rights reserved.</p>
-      </footer>
+      <Footer />
     </div>
   );
 };
