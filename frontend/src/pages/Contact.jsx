@@ -43,17 +43,7 @@ const Contact = () => {
                 </div>
               </div>
 
-              <div style={{ background: 'white', padding: '2rem', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.05)', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'flex-start', gap: '1.25rem' }}>
-                <div style={{ background: 'var(--v0-blue-light)', color: 'var(--v0-blue)', padding: '1rem', borderRadius: '50%' }}>
-                  <MapPin size={24} />
-                </div>
-                <div>
-                  <h3 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '0.25rem' }}>Office</h3>
-                  <p style={{ color: 'var(--text-secondary)', marginBottom: '0.5rem', fontSize: '0.95rem', lineHeight: 1.5 }}>
-                    123 Clinic Way, Health District<br />San Francisco, CA 94105
-                  </p>
-                </div>
-              </div>
+
             </div>
 
             {/* Contact Form */}

@@ -47,6 +47,7 @@ const Footer = () => {
           <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             <li><Link to="/privacy" style={{ color: 'var(--text-secondary)', textDecoration: 'none', fontSize: '0.9rem' }} onMouseOver={(e) => e.target.style.color='var(--v0-blue)'} onMouseOut={(e) => e.target.style.color='var(--text-secondary)'}>Privacy Policy</Link></li>
             <li><Link to="/terms" style={{ color: 'var(--text-secondary)', textDecoration: 'none', fontSize: '0.9rem' }} onMouseOver={(e) => e.target.style.color='var(--v0-blue)'} onMouseOut={(e) => e.target.style.color='var(--text-secondary)'}>Terms of Service</Link></li>
+            <li><Link to="/data-deletion" style={{ color: 'var(--text-secondary)', textDecoration: 'none', fontSize: '0.9rem' }} onMouseOver={(e) => e.target.style.color='var(--v0-blue)'} onMouseOut={(e) => e.target.style.color='var(--text-secondary)'}>Data Deletion</Link></li>
           </ul>
         </div>
 
@@ -64,10 +65,7 @@ const Footer = () => {
               <Phone size={16} style={{ marginTop: '3px', flexShrink: 0, color: 'var(--v0-blue)' }} />
               <span>+1 (555) 123-4567</span>
             </li>
-            <li style={{ display: 'flex', gap: '0.75rem', color: 'var(--text-secondary)', fontSize: '0.9rem', alignItems: 'flex-start' }}>
-              <MapPin size={16} style={{ marginTop: '3px', flexShrink: 0, color: 'var(--v0-blue)' }} />
-              <span>123 Clinic Way, Health District<br />San Francisco, CA 94105</span>
-            </li>
+
           </ul>
         </div>
       </div>
