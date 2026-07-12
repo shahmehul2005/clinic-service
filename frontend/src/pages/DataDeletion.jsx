@@ -22,37 +22,43 @@ const DataDeletion = () => {
           <div className="legal-content" style={{ color: 'var(--text-main)', lineHeight: 1.8, fontSize: '1rem' }}>
             <p>
               At Sanwariya Tech, we respect your privacy and give you full control over your personal data. 
-              If you have interacted with our WhatsApp Business agent to book clinic appointments, you have the right to request the complete deletion of your data from our systems.
+              If you have interacted with any of our software solutions, including our WhatsApp Business agents, you have the right to request the complete deletion of your data from our systems.
             </p>
 
             <h2 style={{ fontSize: '1.5rem', fontWeight: 700, marginTop: '2rem', marginBottom: '1rem', color: 'var(--v0-blue)' }}>1. What Data Can Be Deleted?</h2>
             <p>
-              When you request data deletion, we will permanently erase the following from our secure PostgreSQL database:
+              When you request data deletion, we will permanently erase your personal data from our secure databases. Depending on the service you used, this may include:
             </p>
             <ul style={{ listStyleType: 'disc', paddingLeft: '1.5rem', marginBottom: '1rem' }}>
-              <li>Your phone number.</li>
+              <li>Your phone number and contact details.</li>
               <li>Your WhatsApp Meta IDs associated with your messages.</li>
-              <li>Your past and upcoming clinic appointment history.</li>
+              <li>Your interaction history and service usage logs (such as appointment bookings).</li>
             </ul>
 
             <h2 style={{ fontSize: '1.5rem', fontWeight: 700, marginTop: '2rem', marginBottom: '1rem', color: 'var(--v0-blue)' }}>2. How to Request Data Deletion</h2>
             <p>
-              To initiate a data deletion request, you must email our support team. Please follow these steps:
+              To initiate a data deletion request, you must email our support team. Please format your email exactly as follows:
             </p>
-            <ol style={{ paddingLeft: '1.5rem', marginBottom: '1rem' }}>
-              <li>Send an email to <strong>support@sanwariyatech.dev</strong>.</li>
-              <li>Use the subject line: <strong>"Data Deletion Request"</strong>.</li>
-              <li>In the body of the email, clearly state the phone number you used to interact with our WhatsApp service so we can locate your records.</li>
-            </ol>
+            
+            <div style={{ background: 'var(--bg-page)', padding: '1.5rem', borderRadius: '8px', margin: '1rem 0', borderLeft: '4px solid var(--v0-blue)' }}>
+              <p style={{ margin: 0 }}><strong>Contact us at:</strong></p>
+              <p style={{ marginBottom: '1rem' }}><a href="mailto:support@sanwariyatech.dev" style={{ color: 'var(--v0-blue)', textDecoration: 'none', fontWeight: 600 }}>support@sanwariyatech.dev</a></p>
+              
+              <p style={{ margin: 0 }}><strong>Subject:</strong></p>
+              <p style={{ marginBottom: '1rem' }}>Data Deletion Request</p>
+              
+              <p style={{ margin: 0 }}><strong>Body (include your associated identifier):</strong></p>
+              <p style={{ margin: 0 }}>Phone Number: +91XXXXXXXXXX (or relevant email/ID)</p>
+            </div>
 
             <h2 style={{ fontSize: '1.5rem', fontWeight: 700, marginTop: '2rem', marginBottom: '1rem', color: 'var(--v0-blue)' }}>3. Processing Time</h2>
             <p>
-              Once we receive your request, our team will process the deletion of your data within <strong>7 business days</strong>. You will receive a confirmation email once your data has been completely erased from our servers.
+              Once we receive your request, our team will process the complete deletion of your data within <strong>7 business days</strong>. You will receive a confirmation email once your data has been erased from our servers.
             </p>
 
-            <h2 style={{ fontSize: '1.5rem', fontWeight: 700, marginTop: '2rem', marginBottom: '1rem', color: 'var(--v0-blue)' }}>4. Important Note Regarding WhatsApp</h2>
+            <h2 style={{ fontSize: '1.5rem', fontWeight: 700, marginTop: '2rem', marginBottom: '1rem', color: 'var(--v0-blue)' }}>4. Important Note Regarding Third-Party Platforms</h2>
             <p>
-              While we delete your data from the Sanwariya Tech database, your chat history on your personal device remains in your WhatsApp application. To remove the chat entirely, you must delete the conversation directly within your WhatsApp app.
+              While we delete your data from Sanwariya Tech's databases, your chat history on platforms like WhatsApp remains on your personal device and Meta's servers according to their retention policies. To remove the chat entirely from your end, you must delete the conversation directly within your WhatsApp application.
             </p>
           </div>
         </div>

@@ -22,28 +22,45 @@ const Terms = () => {
           <div className="legal-content" style={{ color: 'var(--text-main)', lineHeight: 1.8, fontSize: '1rem' }}>
             <h2 style={{ fontSize: '1.5rem', fontWeight: 700, marginTop: '2rem', marginBottom: '1rem', color: 'var(--v0-blue)' }}>1. Agreement to Terms</h2>
             <p>
-              By accessing and using Sanwariya Tech, you agree to be bound by these Terms of Service. If you do not agree to these terms, please do not use our service.
+              By accessing and using Sanwariya Tech's software, platforms, or services, you agree to be bound by these Terms of Service. If you do not agree to these terms, please do not use our services.
             </p>
             
             <h2 style={{ fontSize: '1.5rem', fontWeight: 700, marginTop: '2rem', marginBottom: '1rem', color: 'var(--v0-blue)' }}>2. Description of Service</h2>
             <p>
-              Sanwariya Tech provides a clinic management dashboard and automated WhatsApp appointment booking services via the official Meta Graph API.
+              Sanwariya Tech develops AI-powered business software including appointment management systems, communication automation bots, and cloud services (collectively, the "Service"). We may update, modify, or discontinue features of the Service at our sole discretion.
             </p>
 
-            <h2 style={{ fontSize: '1.5rem', fontWeight: 700, marginTop: '2rem', marginBottom: '1rem', color: 'var(--v0-blue)' }}>3. User Responsibilities</h2>
+            <h2 style={{ fontSize: '1.5rem', fontWeight: 700, marginTop: '2rem', marginBottom: '1rem', color: 'var(--v0-blue)' }}>3. User Responsibilities & Acceptable Use</h2>
             <p>
-              You are responsible for maintaining the confidentiality of your account credentials (dashboard login). Clinic owners must ensure that they have the right to process their patients' medical appointments through our systems and comply with local healthcare privacy regulations.
+              You are responsible for maintaining the confidentiality of your account credentials. You agree that you will not:
+            </p>
+            <ul style={{ listStyleType: 'disc', paddingLeft: '1.5rem', marginBottom: '1rem' }}>
+              <li>Misuse the platform or attempt unauthorized access to our systems.</li>
+              <li>Reverse engineer, decompile, or extract the source code of the software.</li>
+              <li>Use the platform for any illegal, harmful, or abusive purposes.</li>
+              <li>Violate any third-party terms, including WhatsApp's Business and Commerce Policies if utilizing our WhatsApp API integrations.</li>
+            </ul>
+
+            <h2 style={{ fontSize: '1.5rem', fontWeight: 700, marginTop: '2rem', marginBottom: '1rem', color: 'var(--v0-blue)' }}>4. Intellectual Property</h2>
+            <p>
+              All software, source code, logos, branding, designs, and intellectual property associated with the Service remain the exclusive property of Sanwariya Tech. You are granted a limited, non-exclusive license to use the Service in accordance with these Terms.
             </p>
 
-            <h2 style={{ fontSize: '1.5rem', fontWeight: 700, marginTop: '2rem', marginBottom: '1rem', color: 'var(--v0-blue)' }}>4. WhatsApp Usage Policies</h2>
+            <h2 style={{ fontSize: '1.5rem', fontWeight: 700, marginTop: '2rem', marginBottom: '1rem', color: 'var(--v0-blue)' }}>5. Service Availability & Limitation of Liability</h2>
             <p>
-              Usage of the WhatsApp booking feature must comply with WhatsApp's Business and Commerce Policies. We reserve the right to suspend accounts that use the API for spam or unapproved marketing.
+              We strive to maintain high availability but do not guarantee uninterrupted operation. Sanwariya Tech is provided "as is" without warranties of any kind, express or implied. We shall not be liable for any indirect damages, loss of profits, missed appointments, or operational downtime due to network failures or third-party API outages (e.g., Meta API outages).
             </p>
 
-            <h2 style={{ fontSize: '1.5rem', fontWeight: 700, marginTop: '2rem', marginBottom: '1rem', color: 'var(--v0-blue)' }}>5. Limitation of Liability</h2>
+            <h2 style={{ fontSize: '1.5rem', fontWeight: 700, marginTop: '2rem', marginBottom: '1rem', color: 'var(--v0-blue)' }}>6. Termination</h2>
             <p>
-              Sanwariya Tech is provided "as is" without warranties of any kind. We shall not be liable for missed appointments due to network downtime, Meta API outages, or misinterpretation by the automated AI agent.
+              We reserve the right to suspend or terminate your access to the Service at any time, with or without notice, for violations of these Terms of Service or for any other reason deemed necessary to protect our platform and users.
             </p>
+            
+            <h2 style={{ fontSize: '1.5rem', fontWeight: 700, marginTop: '2rem', marginBottom: '1rem', color: 'var(--v0-blue)' }}>7. Contact Information</h2>
+            <address style={{ fontStyle: 'normal', marginTop: '0.5rem', padding: '1rem', background: 'var(--bg-page)', borderRadius: '8px' }}>
+              <strong>Sanwariya Tech</strong><br/>
+              Email: <a href="mailto:support@sanwariyatech.dev" style={{ color: 'var(--v0-blue)', textDecoration: 'none', fontWeight: 600 }}>support@sanwariyatech.dev</a>
+            </address>
           </div>
         </div>
       </main>
