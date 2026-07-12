@@ -35,9 +35,11 @@ ALTER TABLE appointments
 ADD CONSTRAINT unique_clinic_appointment_time 
 UNIQUE (clinic_id, appointment_time);
 
--- 4. Enable Row Level Security (Optional but recommended for SaaS)
-ALTER TABLE clinics ENABLE ROW LEVEL SECURITY;
-ALTER TABLE appointments ENABLE ROW LEVEL SECURITY;
+-- 4. Disable Row Level Security (RLS) for MVP
+-- RLS blocks all frontend access by default unless specific policies are created.
+-- For this sandbox/MVP phase, we disable it so the dashboard works.
+ALTER TABLE clinics DISABLE ROW LEVEL SECURITY;
+ALTER TABLE appointments DISABLE ROW LEVEL SECURITY;
 
 -- 5. Insert a Mock Clinic for immediate testing
 INSERT INTO clinics (id, business_name, meta_phone_number_id)
