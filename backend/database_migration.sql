@@ -1,6 +1,13 @@
 -- Drop tables if they exist to allow clean recreation during testing
+DROP TABLE IF EXISTS api_usage;
 DROP TABLE IF EXISTS appointments;
 DROP TABLE IF EXISTS clinics;
+
+-- 0. Create API Usage Table for Rate Limiting
+CREATE TABLE api_usage (
+    month_year TEXT PRIMARY KEY, -- e.g. "2026-07"
+    message_count INTEGER DEFAULT 0
+);
 
 -- 1. Create Clinics Table
 CREATE TABLE clinics (

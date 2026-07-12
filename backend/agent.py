@@ -2,6 +2,7 @@ import os
 import hmac
 import hashlib
 import requests
+from datetime import datetime
 from fastapi import FastAPI, Request, Response
 from supabase import create_client, Client
 from google.adk.agents import Agent
@@ -55,6 +56,38 @@ def get_all_clinics() -> list:
     except Exception as e:
         print(f"Error fetching clinics list: {e}")
         return []
+
+# Rate Limiting Helper
+def check_and_increment_usage() -> bool:
+    """
+    Checks if the monthly API usage is under the strict limit of 990.
+    If it is, increments the usage count.
+    Returns True if allowed, False if limit exceeded.
+    """
+    try:
+        current_month = datetime.now().strftime("%Y-%m")
+        # Fetch current count
+        response = supabase.table("api_usage").select("message_count").eq("month_year", current_month).execute()
+        
+        if response.data:
+            current_count = response.data[0]["message_count"]
+            if current_count >= 990:
+                print(f"CRITICAL: Monthly limit of 990 reached for {current_month}. Message ignored.")
+                return False
+            else:
+                # Increment
+                supabase.table("api_usage").update({"message_count": current_count + 1}).eq("month_year", current_month).execute()
+                return True
+        else:
+            # First message of the month
+            supabase.table("api_usage").insert({"month_year": current_month, "message_count": 1}).execute()
+            return True
+            
+    except Exception as e:
+        print(f"Error checking API usage: {e}")
+        # Fail closed to prevent accidental billing
+        print("Failing closed to prevent accidental billing.")
+        return False
 
 # Signature Verification Helper
 async def verify_signature(request: Request) -> bool:
@@ -214,6 +247,10 @@ async def whatsapp_webhook(request: Request):
                         user_phone = message_obj.get("from")
                         
                         if message_obj.get("type") == "text":
+                            # CRITICAL: Strict rate limiting check
+                            if not check_and_increment_usage():
+                                return Response(status_code=200) # Return 200 so Meta stops retrying
+                                
                             user_message = message_obj["text"]["body"]
                             
                             # Retrieve smart clinic context based on patient booking history
