@@ -74,15 +74,14 @@ const Dashboard = () => {
     // Combine date and time into ISO string
     const appointmentDateTime = new Date(`${newDate}T${newTime}`).toISOString();
     
-    // Construct payload based on user's exact schema
+    // Construct payload based on updated schema
     const payload = {
-      doctor_id: "default-doctor", // User's schema requires doctor_id instead of clinic_id
+      clinic_id: "00000000-0000-0000-0000-000000000001", // Mock Clinic ID for now
       phone_number: cleanPhone,
+      patient_name: newPatientName,
       appointment_time: appointmentDateTime,
       status: 'booked'
     };
-
-    // Note: patient_name is omitted because it doesn't exist in the user's current schema.
     
     const { data, error } = await supabase
       .from('appointments')
