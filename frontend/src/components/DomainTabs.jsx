@@ -1,14 +1,16 @@
 import { useState } from 'react';
 import { Stethoscope, GraduationCap, Building2, Briefcase } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 const DomainTabs = () => {
   const [activeTab, setActiveTab] = useState('clinics');
+  const { t } = useTranslation();
 
   const domains = [
-    { id: 'clinics', label: 'For Clinics', icon: <Stethoscope size={18} /> },
-    { id: 'schools', label: 'For Schools', icon: <GraduationCap size={18} /> },
-    { id: 'coachings', label: 'For Coachings', icon: <Building2 size={18} /> },
-    { id: 'exporters', label: 'For Exporters', icon: <Briefcase size={18} /> }
+    { id: 'clinics', label: t('domains.t1Tab'), icon: <Stethoscope size={18} /> },
+    { id: 'schools', label: t('domains.t2Tab'), icon: <GraduationCap size={18} /> },
+    { id: 'coachings', label: t('domains.t3Tab'), icon: <Building2 size={18} /> },
+    { id: 'exporters', label: t('domains.t4Tab'), icon: <Briefcase size={18} /> }
   ];
 
   return (
@@ -17,10 +19,10 @@ const DomainTabs = () => {
         
         <div style={{ textAlign: 'center', marginBottom: '4rem' }}>
           <h2 style={{ fontSize: '2.5rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '1rem' }}>
-            One Platform. Any Domain.
+            {t('domains.title')}
           </h2>
           <p style={{ fontSize: '1.125rem', color: 'var(--text-secondary)' }}>
-            The AI logic adapts seamlessly to your specific business rules and terminology.
+            {t('domains.subtitle')}
           </p>
         </div>
 
@@ -56,9 +58,9 @@ const DomainTabs = () => {
               <div style={{ width: '64px', height: '64px', background: '#eff6ff', borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)', marginBottom: '1.5rem' }}>
                 <Stethoscope size={32} />
               </div>
-              <h3 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '1rem' }}>Patient Appointment Scheduling</h3>
+              <h3 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '1rem' }}>{t('domains.t1Title')}</h3>
               <p style={{ color: 'var(--text-secondary)', maxWidth: '500px', margin: '0 auto' }}>
-                AI handles patient inquiries, books slots based on doctor availability, and syncs directly to the receptionist's live queue.
+                {t('domains.t1Desc')}
               </p>
             </>
           )}
@@ -67,9 +69,9 @@ const DomainTabs = () => {
               <div style={{ width: '64px', height: '64px', background: '#eff6ff', borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)', marginBottom: '1.5rem' }}>
                 <GraduationCap size={32} />
               </div>
-              <h3 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '1rem' }}>Parent-Teacher Meetings</h3>
+              <h3 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '1rem' }}>{t('domains.t2Title')}</h3>
               <p style={{ color: 'var(--text-secondary)', maxWidth: '500px', margin: '0 auto' }}>
-                Automate PTM scheduling. Parents text the school number, and the AI books a 10-minute slot without any overlap.
+                {t('domains.t2Desc')}
               </p>
             </>
           )}
@@ -78,9 +80,9 @@ const DomainTabs = () => {
               <div style={{ width: '64px', height: '64px', background: '#eff6ff', borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)', marginBottom: '1.5rem' }}>
                 <Building2 size={32} />
               </div>
-              <h3 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '1rem' }}>Student Enrollments</h3>
+              <h3 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '1rem' }}>{t('domains.t3Title')}</h3>
               <p style={{ color: 'var(--text-secondary)', maxWidth: '500px', margin: '0 auto' }}>
-                Answer curriculum FAQs automatically and schedule trial classes or counseling sessions with administrators.
+                {t('domains.t3Desc')}
               </p>
             </>
           )}
@@ -89,9 +91,9 @@ const DomainTabs = () => {
               <div style={{ width: '64px', height: '64px', background: '#eff6ff', borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)', marginBottom: '1.5rem' }}>
                 <Briefcase size={32} />
               </div>
-              <h3 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '1rem' }}>Client Consultations</h3>
+              <h3 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '1rem' }}>{t('domains.t4Title')}</h3>
               <p style={{ color: 'var(--text-secondary)', maxWidth: '500px', margin: '0 auto' }}>
-                Schedule global buyer meetings across different time zones effortlessly via WhatsApp AI.
+                {t('domains.t4Desc')}
               </p>
             </>
           )}

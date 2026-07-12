@@ -31,22 +31,22 @@ const Footer = () => {
             </div>
           </div>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: 1.6, marginBottom: '1.5rem' }}>
-            Next-generation patient management platform. Effortlessly sync your clinic across WhatsApp, cloud, and mobile.
+            {t('footer.desc')}
           </p>
         </div>
 
         {/* Quick Links */}
         <div>
-          <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '1.5rem' }}>Platform</h3>
+          <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '1.5rem' }}>{t('footer.platform')}</h3>
           <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-            <li><Link to="/" style={{ color: 'var(--text-secondary)', textDecoration: 'none', fontSize: '0.9rem' }} onMouseOver={(e) => e.target.style.color='var(--v0-blue)'} onMouseOut={(e) => e.target.style.color='var(--text-secondary)'}>Home</Link></li>
-            <li><Link to="/login" style={{ color: 'var(--text-secondary)', textDecoration: 'none', fontSize: '0.9rem' }} onMouseOver={(e) => e.target.style.color='var(--v0-blue)'} onMouseOut={(e) => e.target.style.color='var(--text-secondary)'}>Dashboard Login</Link></li>
+            <li><Link to="/" style={{ color: 'var(--text-secondary)', textDecoration: 'none', fontSize: '0.9rem' }} onMouseOver={(e) => e.target.style.color='var(--v0-blue)'} onMouseOut={(e) => e.target.style.color='var(--text-secondary)'}>{t('footer.home')}</Link></li>
+            <li><Link to="/login" style={{ color: 'var(--text-secondary)', textDecoration: 'none', fontSize: '0.9rem' }} onMouseOver={(e) => e.target.style.color='var(--v0-blue)'} onMouseOut={(e) => e.target.style.color='var(--text-secondary)'}>{t('footer.dashboardLogin')}</Link></li>
           </ul>
         </div>
 
         {/* Legal Links (Required for Meta) */}
         <div>
-          <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '1.5rem' }}>Legal & Compliance</h3>
+          <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '1.5rem' }}>{t('footer.legalTitle')}</h3>
           <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             <li><Link to="/privacy" style={{ color: 'var(--text-secondary)', textDecoration: 'none', fontSize: '0.9rem' }} onMouseOver={(e) => e.target.style.color='var(--v0-blue)'} onMouseOut={(e) => e.target.style.color='var(--text-secondary)'}>{t('footer.privacy')}</Link></li>
             <li><Link to="/terms" style={{ color: 'var(--text-secondary)', textDecoration: 'none', fontSize: '0.9rem' }} onMouseOver={(e) => e.target.style.color='var(--v0-blue)'} onMouseOut={(e) => e.target.style.color='var(--text-secondary)'}>{t('footer.terms')}</Link></li>

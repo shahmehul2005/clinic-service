@@ -10,6 +10,34 @@
     "cta": "Start Free Trial",
     "secondaryCta": "Watch Demo"
   },
+  "features": {
+    "title": "Built for Local Businesses",
+    "subtitle": "Everything you need to automate your front desk and manage your queue without any technical expertise.",
+    "f1Title": "WhatsApp AI Agent",
+    "f1Desc": "Your patient can text your clinic 24/7. Our Hinglish AI understands them naturally and books slots automatically.",
+    "f2Title": "Real-Time Sync",
+    "f2Desc": "The moment an appointment is booked on WhatsApp, it appears instantly on the receptionist dashboard.",
+    "f3Title": "Double-Booking Protection",
+    "f3Desc": "Built on PostgreSQL with strict unique constraints. Two patients can never book the same slot at the exact same time.",
+    "f4Title": "Cloud Dashboard",
+    "f4Desc": "Access your clinic queue from anywhere. Simple, flat, and extremely fast web interface built for speed."
+  },
+  "domains": {
+    "title": "One Platform. Any Domain.",
+    "subtitle": "The AI logic adapts seamlessly to your specific business rules and terminology.",
+    "t1Tab": "For Clinics",
+    "t1Title": "Patient Appointment Scheduling",
+    "t1Desc": "AI handles patient inquiries, books slots based on doctor availability, and syncs directly to the receptionist's live queue.",
+    "t2Tab": "For Schools",
+    "t2Title": "Parent-Teacher Meetings",
+    "t2Desc": "Automate PTM scheduling. Parents text the school number, and the AI books a 10-minute slot without any overlap.",
+    "t3Tab": "For Coachings",
+    "t3Title": "Student Enrollments",
+    "t3Desc": "Answer curriculum FAQs automatically and schedule trial classes or counseling sessions with administrators.",
+    "t4Tab": "For Exporters",
+    "t4Title": "Client Consultations",
+    "t4Desc": "Schedule global buyer meetings across different time zones effortlessly via WhatsApp AI."
+  },
   "demo": {
     "title": "See Sanwariya Tech in Action",
     "subtitle": "Watch how our AI automates your clinic's WhatsApp instantly.",
@@ -19,7 +47,19 @@
     "phoneLabel": "WhatsApp Number",
     "submit": "Request Access"
   },
+  "login": {
+    "welcome": "Welcome to Sanwariya Tech",
+    "subtitle": "Sign in to your dashboard",
+    "email": "Email",
+    "password": "Password",
+    "signIn": "Sign In"
+  },
   "footer": {
+    "desc": "Next-generation patient management platform. Effortlessly sync your clinic across WhatsApp, cloud, and mobile.",
+    "platform": "Platform",
+    "home": "Home",
+    "dashboardLogin": "Dashboard Login",
+    "legalTitle": "Legal & Compliance",
     "privacy": "Privacy Policy",
     "terms": "Terms of Service",
     "dataDeletion": "Data Deletion"

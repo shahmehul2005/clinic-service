@@ -1,26 +1,29 @@
 import { Shield, Zap, Globe, MessageCircle } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 const Features = () => {
+  const { t } = useTranslation();
+
   const features = [
     {
       icon: <MessageCircle size={24} style={{ color: 'var(--primary)' }} />,
-      title: 'WhatsApp AI Agent',
-      description: 'Your patient can text your clinic 24/7. Our Hinglish AI understands them naturally and books slots automatically.'
+      title: t('features.f1Title'),
+      description: t('features.f1Desc')
     },
     {
       icon: <Zap size={24} style={{ color: 'var(--primary)' }} />,
-      title: 'Real-Time Sync',
-      description: 'The moment an appointment is booked on WhatsApp, it appears instantly on the receptionist dashboard.'
+      title: t('features.f2Title'),
+      description: t('features.f2Desc')
     },
     {
       icon: <Shield size={24} style={{ color: 'var(--primary)' }} />,
-      title: 'Double-Booking Protection',
-      description: 'Built on PostgreSQL with strict unique constraints. Two patients can never book the same slot at the exact same time.'
+      title: t('features.f3Title'),
+      description: t('features.f3Desc')
     },
     {
       icon: <Globe size={24} style={{ color: 'var(--primary)' }} />,
-      title: 'Cloud Dashboard',
-      description: 'Access your clinic queue from anywhere. Simple, flat, and extremely fast web interface built for speed.'
+      title: t('features.f4Title'),
+      description: t('features.f4Desc')
     }
   ];
 
@@ -30,10 +33,10 @@ const Features = () => {
         
         <div style={{ textAlign: 'center', marginBottom: '4rem' }}>
           <h2 style={{ fontSize: '2.5rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '1rem' }}>
-            Built for Local Businesses
+            {t('features.title')}
           </h2>
           <p style={{ fontSize: '1.125rem', color: 'var(--text-secondary)', maxWidth: '600px', margin: '0 auto' }}>
-            Everything you need to automate your front desk and manage your queue without any technical expertise.
+            {t('features.subtitle')}
           </p>
         </div>
 
