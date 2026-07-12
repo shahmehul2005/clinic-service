@@ -142,7 +142,7 @@ const Dashboard = () => {
             <HeartPulse size={24} />
           </div>
           <div>
-            <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-main)', lineHeight: 1.2 }}>ClinicOS</div>
+            <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-main)', lineHeight: 1.2 }}>Sanwariya Tech</div>
             <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Reception Desk</div>
           </div>
         </div>

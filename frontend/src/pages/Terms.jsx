@@ -22,12 +22,12 @@ const Terms = () => {
           <div className="legal-content" style={{ color: 'var(--text-main)', lineHeight: 1.8, fontSize: '1rem' }}>
             <h2 style={{ fontSize: '1.5rem', fontWeight: 700, marginTop: '2rem', marginBottom: '1rem', color: 'var(--v0-blue)' }}>1. Agreement to Terms</h2>
             <p>
-              By accessing and using ClinicOS, you agree to be bound by these Terms of Service. If you do not agree to these terms, please do not use our service.
+              By accessing and using Sanwariya Tech, you agree to be bound by these Terms of Service. If you do not agree to these terms, please do not use our service.
             </p>
             
             <h2 style={{ fontSize: '1.5rem', fontWeight: 700, marginTop: '2rem', marginBottom: '1rem', color: 'var(--v0-blue)' }}>2. Description of Service</h2>
             <p>
-              ClinicOS provides a clinic management dashboard and automated WhatsApp appointment booking services via the official Meta Graph API.
+              Sanwariya Tech provides a clinic management dashboard and automated WhatsApp appointment booking services via the official Meta Graph API.
             </p>
 
             <h2 style={{ fontSize: '1.5rem', fontWeight: 700, marginTop: '2rem', marginBottom: '1rem', color: 'var(--v0-blue)' }}>3. User Responsibilities</h2>
@@ -42,7 +42,7 @@ const Terms = () => {
 
             <h2 style={{ fontSize: '1.5rem', fontWeight: 700, marginTop: '2rem', marginBottom: '1rem', color: 'var(--v0-blue)' }}>5. Limitation of Liability</h2>
             <p>
-              ClinicOS is provided "as is" without warranties of any kind. We shall not be liable for missed appointments due to network downtime, Meta API outages, or misinterpretation by the automated AI agent.
+              Sanwariya Tech is provided "as is" without warranties of any kind. We shall not be liable for missed appointments due to network downtime, Meta API outages, or misinterpretation by the automated AI agent.
             </p>
           </div>
         </div>

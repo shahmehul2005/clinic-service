@@ -22,7 +22,7 @@ const Privacy = () => {
           <div className="legal-content" style={{ color: 'var(--text-main)', lineHeight: 1.8, fontSize: '1rem' }}>
             <h2 style={{ fontSize: '1.5rem', fontWeight: 700, marginTop: '2rem', marginBottom: '1rem', color: 'var(--v0-blue)' }}>1. Information We Collect</h2>
             <p>
-              When you interact with ClinicOS via our website, WhatsApp Business integration, or our cloud platform, we may collect the following information:
+              When you interact with Sanwariya Tech via our website, WhatsApp Business integration, or our cloud platform, we may collect the following information:
               personal identification information (Name, Phone Number, WhatsApp Meta IDs) and appointment booking history.
             </p>
             
@@ -43,7 +43,7 @@ const Privacy = () => {
 
             <h2 style={{ fontSize: '1.5rem', fontWeight: 700, marginTop: '2rem', marginBottom: '1rem', color: 'var(--v0-blue)' }}>5. Contact Information</h2>
             <p>
-              If you have any questions about this Privacy Policy, please contact us at: <strong>support@clinicos.com</strong>.
+              If you have any questions about this Privacy Policy, please contact us at: <strong>support@sanwariyatech.dev</strong>.
             </p>
           </div>
         </div>

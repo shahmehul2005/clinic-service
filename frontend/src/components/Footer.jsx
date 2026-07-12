@@ -24,7 +24,7 @@ const Footer = () => {
               <HeartPulse size={24} />
             </div>
             <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-main)', letterSpacing: '-0.5px' }}>
-              ClinicOS
+              Sanwariya Tech
             </div>
           </div>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: 1.6, marginBottom: '1.5rem' }}>
@@ -56,8 +56,8 @@ const Footer = () => {
           <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <li style={{ display: 'flex', gap: '0.75rem', color: 'var(--text-secondary)', fontSize: '0.9rem', alignItems: 'flex-start' }}>
               <Mail size={16} style={{ marginTop: '3px', flexShrink: 0, color: 'var(--v0-blue)' }} />
-              <a href="mailto:support@clinicos.com" style={{ color: 'var(--text-secondary)', textDecoration: 'none' }} onMouseOver={(e) => e.target.style.color='var(--v0-blue)'} onMouseOut={(e) => e.target.style.color='var(--text-secondary)'}>
-                support@clinicos.com
+              <a href="mailto:support@sanwariyatech.dev" style={{ color: 'var(--text-secondary)', textDecoration: 'none' }} onMouseOver={(e) => e.target.style.color='var(--v0-blue)'} onMouseOut={(e) => e.target.style.color='var(--text-secondary)'}>
+                support@sanwariyatech.dev
               </a>
             </li>
             <li style={{ display: 'flex', gap: '0.75rem', color: 'var(--text-secondary)', fontSize: '0.9rem', alignItems: 'flex-start' }}>
@@ -84,7 +84,7 @@ const Footer = () => {
         gap: '1rem'
       }}>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-          &copy; {new Date().getFullYear()} ClinicOS Inc. All rights reserved.
+          &copy; {new Date().getFullYear()} Sanwariya Tech. All rights reserved.
         </p>
         <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
           Verified WhatsApp Business Partner

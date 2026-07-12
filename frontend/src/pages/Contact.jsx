@@ -28,7 +28,7 @@ const Contact = () => {
                 <div>
                   <h3 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '0.25rem' }}>Email Support</h3>
                   <p style={{ color: 'var(--text-secondary)', marginBottom: '0.5rem', fontSize: '0.95rem' }}>We typically reply within 24 hours.</p>
-                  <a href="mailto:support@clinicos.com" style={{ color: 'var(--v0-blue)', fontWeight: 600, textDecoration: 'none' }}>support@clinicos.com</a>
+                  <a href="mailto:support@sanwariyatech.dev" style={{ color: 'var(--v0-blue)', fontWeight: 600, textDecoration: 'none' }}>support@sanwariyatech.dev</a>
                 </div>
               </div>
 
