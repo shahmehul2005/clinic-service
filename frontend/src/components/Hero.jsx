@@ -1,7 +1,10 @@
-import { ArrowRight, MessageSquare, Calendar } from 'lucide-react';
+import { ArrowRight, MessageSquare, Calendar, Play } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 
 const Hero = () => {
+  const { t } = useTranslation();
+
   return (
     <div style={{ padding: '6rem 2rem', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', background: 'var(--bg-card)' }}>
       
@@ -10,19 +13,19 @@ const Hero = () => {
       </div>
       
       <h1 style={{ fontSize: '3.5rem', fontWeight: 800, color: 'var(--text-main)', letterSpacing: '-1px', maxWidth: '800px', lineHeight: 1.1, marginBottom: '1.5rem' }}>
-        The Operating System for Modern Local Clinics
+        {t('hero.title1')} <span style={{ color: 'var(--v0-green)' }}>{t('hero.title2')}</span>
       </h1>
       
       <p style={{ fontSize: '1.25rem', color: 'var(--text-secondary)', maxWidth: '600px', marginBottom: '2.5rem' }}>
-        Automate your front desk with a Hinglish-speaking AI receptionist that books appointments directly into your secure management dashboard.
+        {t('hero.subtitle')}
       </p>
       
       <div style={{ display: 'flex', gap: '1rem' }}>
-        <button className="btn btn-primary" style={{ padding: '0.875rem 1.5rem', fontSize: '1rem' }}>
-          Get Started Free <ArrowRight size={18} style={{ marginLeft: '0.5rem' }} />
-        </button>
-        <Link to="/login" className="btn btn-outline" style={{ padding: '0.875rem 1.5rem', fontSize: '1rem', display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
-          <Calendar size={18} /> View Dashboard
+        <Link to="/demo" className="btn btn-primary" style={{ padding: '0.875rem 1.5rem', fontSize: '1rem', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
+          {t('hero.cta')} <ArrowRight size={18} style={{ marginLeft: '0.5rem' }} />
+        </Link>
+        <Link to="/demo" className="btn btn-outline" style={{ padding: '0.875rem 1.5rem', fontSize: '1rem', display: 'inline-flex', alignItems: 'center', gap: '0.5rem', textDecoration: 'none' }}>
+          <Play size={18} /> {t('hero.secondaryCta')}
         </Link>
       </div>
 

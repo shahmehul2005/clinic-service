@@ -1,0 +1,27 @@
+{
+  "navbar": {
+    "login": "Login",
+    "bookDemo": "Book Demo"
+  },
+  "hero": {
+    "title1": "Manage Your Clinic on",
+    "title2": "WhatsApp",
+    "subtitle": "Stop paying receptionists. Let our AI handle patient bookings, reminders, and schedules 24/7—directly on WhatsApp.",
+    "cta": "Start Free Trial",
+    "secondaryCta": "Watch Demo"
+  },
+  "demo": {
+    "title": "See Sanwariya Tech in Action",
+    "subtitle": "Watch how our AI automates your clinic's WhatsApp instantly.",
+    "formTitle": "Request Your Sandbox Trial",
+    "nameLabel": "Full Name",
+    "emailLabel": "Work Email",
+    "phoneLabel": "WhatsApp Number",
+    "submit": "Request Access"
+  },
+  "footer": {
+    "privacy": "Privacy Policy",
+    "terms": "Terms of Service",
+    "dataDeletion": "Data Deletion"
+  }
+}
