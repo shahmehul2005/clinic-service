@@ -11,6 +11,12 @@ const Admin = () => {
   const [message, setMessage] = useState(null);
   const [error, setError] = useState(null);
 
+  // Upgrade State
+  const [upgradeClinicId, setUpgradeClinicId] = useState('');
+  const [upgradeLoading, setUpgradeLoading] = useState(false);
+  const [upgradeMessage, setUpgradeMessage] = useState(null);
+  const [upgradeError, setUpgradeError] = useState(null);
+
   const handleOnboard = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -49,9 +55,43 @@ const Admin = () => {
     }
   };
 
+  const handleUpgrade = async (e) => {
+    e.preventDefault();
+    setUpgradeLoading(true);
+    setUpgradeMessage(null);
+    setUpgradeError(null);
+
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const response = await fetch(`${apiUrl}/api/admin/upgrade`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          pin,
+          clinic_id: upgradeClinicId
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setUpgradeMessage("Clinic upgraded to permanent account successfully!");
+        setUpgradeClinicId('');
+      } else {
+        setUpgradeError(data.detail || data || "Failed to upgrade clinic.");
+      }
+    } catch (err) {
+      setUpgradeError("Network error. Is the backend running?");
+    } finally {
+      setUpgradeLoading(false);
+    }
+  };
+
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-page)', padding: '1rem' }}>
-      <div className="card" style={{ width: '100%', maxWidth: '500px', padding: '2.5rem' }}>
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', background: 'var(--bg-page)', padding: '2rem' }}>
+      <div className="card" style={{ width: '100%', maxWidth: '600px', padding: '2.5rem', marginBottom: '2rem' }}>
         
         <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
           <div style={{ display: 'inline-flex', background: 'var(--v0-red-light)', color: 'var(--v0-red)', padding: '1rem', borderRadius: '50%', marginBottom: '1rem' }}>
@@ -133,11 +173,51 @@ const Admin = () => {
             <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>Must be at least 6 characters.</p>
           </div>
 
-          <button type="submit" disabled={loading} className="btn btn-primary" style={{ marginTop: '0.5rem', padding: '0.75rem', background: 'var(--v0-red)', border: 'none' }}>
+          <button type="submit" disabled={loading} className="btn btn-primary" style={{ marginTop: '0.5rem', padding: '0.75rem', background: 'var(--v0-blue)', border: 'none', color: 'white', borderRadius: '8px', cursor: 'pointer' }}>
             {loading ? 'Creating Clinic...' : 'Create Clinic & Start Trial'}
           </button>
         </form>
+      </div>
 
+      {/* Upgrade Section */}
+      <div className="card" style={{ width: '100%', maxWidth: '600px', padding: '2.5rem' }}>
+        <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '1rem' }}>
+          Upgrade Clinic to Permanent
+        </h2>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '1.5rem' }}>
+          Remove the 7-day trial limit from a clinic account so they never expire.
+        </p>
+
+        {upgradeMessage && (
+          <div style={{ padding: '1rem', background: '#ecfdf5', color: '#059669', borderRadius: '8px', marginBottom: '1.5rem', display: 'flex', gap: '0.5rem', alignItems: 'flex-start', fontSize: '0.9rem' }}>
+            <CheckCircle2 size={18} style={{ flexShrink: 0, marginTop: '2px' }} />
+            <div>{upgradeMessage}</div>
+          </div>
+        )}
+
+        {upgradeError && (
+          <div style={{ padding: '1rem', background: 'var(--v0-red-light)', color: 'var(--v0-red)', borderRadius: '8px', marginBottom: '1.5rem', fontSize: '0.9rem', border: '1px solid #fecaca' }}>
+            {upgradeError}
+          </div>
+        )}
+
+        <form onSubmit={handleUpgrade} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          <div>
+            <label className="form-label" htmlFor="upgradeClinicId">Clinic ID (UUID)</label>
+            <input 
+              id="upgradeClinicId"
+              type="text" 
+              className="form-input"
+              value={upgradeClinicId}
+              onChange={(e) => setUpgradeClinicId(e.target.value)}
+              required 
+              placeholder="e.g. 550e8400-e29b-41d4-a716-446655440000"
+            />
+          </div>
+          <button type="submit" disabled={upgradeLoading} className="btn btn-primary" style={{ marginTop: '0.5rem', padding: '0.75rem', background: 'var(--v0-green)', border: 'none', color: 'white', borderRadius: '8px', cursor: 'pointer' }}>
+            {upgradeLoading ? 'Upgrading...' : 'Upgrade to Permanent'}
+          </button>
+        </form>
       </div>
     </div>
   );
