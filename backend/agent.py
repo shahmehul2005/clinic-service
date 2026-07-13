@@ -7,7 +7,8 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from supabase import create_client, Client
-from google.adk.agents import Agent
+from google import genai
+from google.genai import types
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -58,15 +59,37 @@ def get_patient_clinic_context(phone_number: str) -> str:
     return None
 
 def get_all_clinics() -> list:
-    """Retrieves all registered clinics from the database."""
+    """Retrieves all active registered clinics from the database."""
     try:
         response = supabase.table("clinics") \
-            .select("id, business_name") \
+            .select("id, business_name, trial_end_date") \
             .execute()
-        return response.data if response.data else []
+        if response.data:
+            now = datetime.now()
+            # A clinic is active if trial_end_date is NULL (permanent) or in the future
+            active_clinics = []
+            for c in response.data:
+                trial_end = c.get("trial_end_date")
+                if not trial_end or datetime.fromisoformat(trial_end.replace('Z', '+00:00')) > now.astimezone():
+                    active_clinics.append(c)
+            return active_clinics
+        return []
     except Exception as e:
         print(f"Error fetching clinics list: {e}")
         return []
+
+def is_clinic_active(clinic_id: str) -> bool:
+    """Checks if a clinic's trial is active or permanent."""
+    try:
+        response = supabase.table("clinics").select("trial_end_date").eq("id", clinic_id).execute()
+        if response.data:
+            trial_end_date = response.data[0].get("trial_end_date")
+            if not trial_end_date:
+                return True # Permanent
+            return datetime.fromisoformat(trial_end_date.replace('Z', '+00:00')) > datetime.now().astimezone()
+    except Exception as e:
+        print(f"Error checking clinic active status: {e}")
+    return False
 
 # Rate Limiting Helper
 def check_and_increment_usage() -> bool:
@@ -178,23 +201,28 @@ def book_slot(clinic_id: str, phone_number: str, date_str: str, time_str: str, p
             return {"status": "error", "message": "CRITICAL: Slot taken. Apologize and offer another time."}
         return {"status": "error", "message": f"Database error: {error_msg}"}
 
-# 3. Initialize the Google ADK Agent (Hindi by default)
-receptionist_agent = Agent(
-    name="whatsapp_receptionist",
-    model="gemini-2.5-flash",
-    description="A Hindi-speaking clinic receptionist.",
-    instruction=(
-        "You are a helpful and polite clinic receptionist. Speak entirely in clean, polite Hindi (using Devanagari script). "
-        "Your goal is to book appointment slots for patients.\n\n"
-        "CLINIC ROUTING RULES:\n"
-        "1. Check the context injected at the start of the prompt.\n"
-        "2. If `clinic_id` is present, it means the patient has a history with this clinic. Immediately greet them, check availability for that clinic using `check_availability`, and guide them to confirm a slot. Do NOT ask them which clinic they want to visit.\n"
-        "3. If `IS_FIRST_TIME=True` or `clinic_id` is missing, you MUST present the list of available clinics (which will be provided in the context) and politely ask the patient to choose which clinic they would like to visit.\n"
-        "4. Once a clinic is identified or selected, ask for their preferred time and name, and then call `book_slot` to save the appointment.\n\n"
-        "Keep your WhatsApp messages warm, short, and formatted with spacing for readability."
-    ),
-    tools=[check_availability, book_slot]
+# 3. Initialize the Google GenAI Client (Hindi by default)
+client = genai.Client()
+
+instruction = (
+    "You are a helpful and polite clinic receptionist. Speak entirely in clean, polite Hindi (using Devanagari script). "
+    "Your goal is to book appointment slots for patients.\n\n"
+    "CLINIC ROUTING RULES:\n"
+    "1. Check the context injected at the start of the prompt.\n"
+    "2. If `clinic_id` is present, it means the patient has a history with this clinic. Immediately greet them, check availability for that clinic using `check_availability`, and guide them to confirm a slot. Do NOT ask them which clinic they want to visit.\n"
+    "3. If `IS_FIRST_TIME=True` or `clinic_id` is missing, you MUST present the list of available clinics (which will be provided in the context) and politely ask the patient to choose which clinic they would like to visit.\n"
+    "4. Once a clinic is identified or selected, ask for their preferred time and name, and then call `book_slot` to save the appointment.\n\n"
+    "Keep your WhatsApp messages warm, short, and formatted with spacing for readability."
 )
+
+agent_config = types.GenerateContentConfig(
+    system_instruction=instruction,
+    tools=[check_availability, book_slot],
+    temperature=0.7
+)
+
+# In-memory dictionary to hold multi-turn conversation history per phone number
+chat_sessions = {}
 
 def send_whatsapp_message(to_phone: str, message: str):
     """Sends a text message back to the user via Meta Graph API."""
@@ -281,6 +309,24 @@ async def onboard_clinic(req: OnboardRequest):
         from fastapi.responses import JSONResponse
         return JSONResponse(status_code=500, content={"detail": str(e)})
 
+class UpgradeRequest(BaseModel):
+    pin: str
+    clinic_id: str
+
+@app.post("/api/admin/upgrade")
+async def upgrade_clinic(req: UpgradeRequest):
+    """Secure endpoint to upgrade a clinic to a permanent account."""
+    if req.pin != ADMIN_PIN:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=401, content={"detail": "Invalid PIN"})
+    try:
+        # Set trial_end_date to NULL to make it permanent
+        supabase.table("clinics").update({"trial_end_date": None}).eq("id", req.clinic_id).execute()
+        return {"status": "success", "message": "Clinic upgraded to permanent account."}
+    except Exception as e:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=500, content={"detail": str(e)})
+
 # 5. Webhook Ingestion (POST) for WhatsApp Messages (Secured with Signature check)
 @app.post("/webhook")
 async def whatsapp_webhook(request: Request):
@@ -313,6 +359,10 @@ async def whatsapp_webhook(request: Request):
                             clinic_id = get_patient_clinic_context(user_phone)
                             
                             if clinic_id:
+                                if not is_clinic_active(clinic_id):
+                                    print(f"Ignored message: Clinic {clinic_id} trial expired.")
+                                    return Response(status_code=200)
+                                    
                                 # Returning patient - auto route to their clinic
                                 context = f"[Context: clinic_id={clinic_id}, phone={user_phone}]"
                             else:
@@ -322,10 +372,19 @@ async def whatsapp_webhook(request: Request):
                                 context = f"[Context: phone={user_phone}, IS_FIRST_TIME=True, available_clinics=[{clinics_str}]]"
                                 
                             agent_prompt = f"{context}\nUser says: {user_message}"
-                            response = receptionist_agent.run(agent_prompt)
+                            
+                            # Retrieve or create a chat session for this user to maintain multi-turn history
+                            if user_phone not in chat_sessions:
+                                chat_sessions[user_phone] = client.chats.create(
+                                    model="gemini-2.5-flash",
+                                    config=agent_config
+                                )
+                                
+                            response = chat_sessions[user_phone].send_message(agent_prompt)
                             
                             # Send reply back to Meta API
-                            send_whatsapp_message(user_phone, response.text)
+                            if response.text:
+                                send_whatsapp_message(user_phone, response.text)
                             
             return Response(status_code=200)
         else:
