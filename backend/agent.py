@@ -2,8 +2,10 @@ import os
 import hmac
 import hashlib
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 from fastapi import FastAPI, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 from supabase import create_client, Client
 from google.adk.agents import Agent
 from dotenv import load_dotenv
@@ -11,6 +13,14 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # 1. Initialize Supabase
 supabase: Client = create_client(
@@ -23,6 +33,7 @@ META_ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN")
 META_PHONE_NUMBER_ID = os.getenv("META_PHONE_NUMBER_ID")
 META_VERIFY_TOKEN = os.getenv("META_VERIFY_TOKEN", "clinic_os_secure_token_123")
 META_CLIENT_SECRET = os.getenv("META_CLIENT_SECRET")
+ADMIN_PIN = os.getenv("ADMIN_PIN", "123456")
 
 # Database Context Helpers
 def get_patient_clinic_context(phone_number: str) -> str:
@@ -224,6 +235,49 @@ async def verify_webhook(request: Request):
         else:
             return Response(status_code=403)
     return Response(status_code=400)
+
+class OnboardRequest(BaseModel):
+    pin: str
+    business_name: str
+    admin_email: str
+    password: str
+
+@app.post("/api/admin/onboard")
+async def onboard_clinic(req: OnboardRequest):
+    """Secure endpoint to create a new clinic and its auth user."""
+    if req.pin != ADMIN_PIN:
+        return Response(status_code=401, content="Invalid PIN")
+        
+    try:
+        # 1. Create Supabase Auth User using Admin API
+        auth_response = supabase.auth.admin.create_user({
+            "email": req.admin_email,
+            "password": req.password,
+            "email_confirm": True
+        })
+        user_id = auth_response.user.id
+        
+        # 2. Insert into Clinics table with 7-day trial
+        trial_end = (datetime.now() + timedelta(days=7)).isoformat()
+        
+        # We use the shared META_PHONE_NUMBER_ID for the MVP
+        clinic_response = supabase.table("clinics").insert({
+            "business_name": req.business_name,
+            "meta_phone_number_id": META_PHONE_NUMBER_ID or "NOT_SET",
+            "admin_email": req.admin_email,
+            "admin_auth_uid": user_id,
+            "trial_end_date": trial_end
+        }).execute()
+        
+        clinic_id = clinic_response.data[0]["id"]
+        
+        # 3. Store clinic_id in user metadata for easy access on the frontend
+        supabase.auth.admin.update_user_by_id(user_id, {"user_metadata": {"clinic_id": clinic_id}})
+        
+        return {"status": "success", "clinic_id": clinic_id, "trial_end_date": trial_end}
+    except Exception as e:
+        print(f"Error onboarding: {e}")
+        return Response(status_code=500, content=str(e))
 
 # 5. Webhook Ingestion (POST) for WhatsApp Messages (Secured with Signature check)
 @app.post("/webhook")

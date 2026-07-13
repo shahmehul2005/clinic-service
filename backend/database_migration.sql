@@ -14,6 +14,9 @@ CREATE TABLE clinics (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     business_name TEXT NOT NULL,
     meta_phone_number_id TEXT NOT NULL,
+    admin_email TEXT,
+    admin_auth_uid UUID, -- Links to auth.users.id
+    trial_end_date TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 

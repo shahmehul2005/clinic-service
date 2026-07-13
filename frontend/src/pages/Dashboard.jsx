@@ -8,10 +8,15 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 
 const Dashboard = () => {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [appointments, setAppointments] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isTrialExpired, setIsTrialExpired] = useState(false);
+  const [clinicName, setClinicName] = useState('Sanwariya Tech');
+  
+  // Extract user's dynamic clinic ID, or default to mock for testing
+  const clinicId = user?.user_metadata?.clinic_id || "00000000-0000-0000-0000-000000000001";
   
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -22,18 +27,36 @@ const Dashboard = () => {
   const [submitError, setSubmitError] = useState('');
 
   useEffect(() => {
+    const fetchClinicData = async () => {
+      const { data, error } = await supabase
+        .from('clinics')
+        .select('business_name, trial_end_date')
+        .eq('id', clinicId)
+        .single();
+        
+      if (!error && data) {
+        setClinicName(data.business_name);
+        if (data.trial_end_date && new Date() > new Date(data.trial_end_date)) {
+          setIsTrialExpired(true);
+        }
+      }
+    };
+    
     const fetchAppointments = async () => {
       const { data, error } = await supabase
         .from('appointments')
         .select('*')
+        .eq('clinic_id', clinicId)
         .order('appointment_time', { ascending: true });
         
       if (!error && data) {
         setAppointments(data);
       }
     };
+    
+    fetchClinicData();
     fetchAppointments();
-  }, []);
+  }, [clinicId]);
 
   const handleUpdateStatus = async (id, newStatus) => {
     const { error } = await supabase
@@ -76,7 +99,7 @@ const Dashboard = () => {
     
     // Construct payload based on updated schema
     const payload = {
-      clinic_id: "00000000-0000-0000-0000-000000000001", // Mock Clinic ID for now
+      clinic_id: clinicId, // Dynamically use the logged in user's clinic ID
       phone_number: cleanPhone,
       patient_name: newPatientName,
       appointment_time: appointmentDateTime,
@@ -131,6 +154,32 @@ const Dashboard = () => {
     total: appointments.length
   };
 
+  if (isTrialExpired) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-page)', padding: '1rem' }}>
+        <div className="card" style={{ width: '100%', maxWidth: '500px', padding: '3rem', textAlign: 'center' }}>
+          <div style={{ display: 'inline-flex', background: 'var(--v0-red-light)', color: 'var(--v0-red)', padding: '1rem', borderRadius: '50%', marginBottom: '1.5rem' }}>
+            <Clock size={40} />
+          </div>
+          <h1 style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-main)', marginBottom: '1rem' }}>
+            Trial Expired
+          </h1>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '1rem', lineHeight: 1.6, marginBottom: '2rem' }}>
+            Your 7-day free trial of Sanwariya Tech has ended. To continue using the AI receptionist and managing your patients, please contact sales to upgrade to a paid plan.
+          </p>
+          <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
+            <button onClick={logout} className="btn-v0-outline" style={{ padding: '0.75rem 1.5rem', borderRadius: '8px' }}>
+              Logout
+            </button>
+            <a href="mailto:support@sanwariyatech.dev" className="btn-v0-primary" style={{ padding: '0.75rem 1.5rem', borderRadius: '8px', textDecoration: 'none' }}>
+              Contact Sales
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg-page)', position: 'relative' }}>
       {/* Sidebar */}
@@ -141,8 +190,8 @@ const Dashboard = () => {
             <HeartPulse size={24} />
           </div>
           <div>
-            <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-main)', lineHeight: 1.2 }}>Sanwariya Tech</div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Reception Desk</div>
+            <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-main)', lineHeight: 1.2 }}>{clinicName}</div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Powered by Sanwariya Tech</div>
           </div>
         </div>
 
