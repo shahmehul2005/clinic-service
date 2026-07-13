@@ -277,7 +277,9 @@ async def onboard_clinic(req: OnboardRequest):
         return {"status": "success", "clinic_id": clinic_id, "trial_end_date": trial_end}
     except Exception as e:
         print(f"Error onboarding: {e}")
-        return Response(status_code=500, content=str(e))
+        # Return JSONResponse instead of raw Response so CORS middleware processes it properly
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=500, content={"detail": str(e)})
 
 # 5. Webhook Ingestion (POST) for WhatsApp Messages (Secured with Signature check)
 @app.post("/webhook")
