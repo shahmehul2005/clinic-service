@@ -371,7 +371,8 @@ async def whatsapp_webhook(request: Request):
                                 clinics_str = ", ".join([f"{c['business_name']} (ID: {c['id']})" for c in clinics])
                                 context = f"[Context: phone={user_phone}, IS_FIRST_TIME=True, available_clinics=[{clinics_str}]]"
                                 
-                            agent_prompt = f"{context}\nUser says: {user_message}"
+                            current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                            agent_prompt = f"[Current System Time: {current_time}]\n{context}\nUser says: {user_message}"
                             
                             # Retrieve or create a chat session for this user to maintain multi-turn history
                             if user_phone not in chat_sessions:
@@ -385,6 +386,8 @@ async def whatsapp_webhook(request: Request):
                             # Send reply back to Meta API
                             if response.text:
                                 send_whatsapp_message(user_phone, response.text)
+                            else:
+                                print(f"WARNING: response.text is empty! Full response: {response}")
                             
             return Response(status_code=200)
         else:
