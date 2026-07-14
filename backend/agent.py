@@ -397,7 +397,7 @@ async def whatsapp_webhook(request: Request):
                             # Retrieve or create a chat session for this user to maintain multi-turn history
                             if user_phone not in chat_sessions:
                                 chat_sessions[user_phone] = client.chats.create(
-                                    model="gemini-1.5-flash",
+                                    model="gemini-2.5-flash",
                                     config=agent_config
                                 )
                                 
