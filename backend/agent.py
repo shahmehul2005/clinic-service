@@ -405,6 +405,10 @@ async def update_appointment_status(appointment_id: str, req: StatusUpdateReques
         
         # 3. Trigger WhatsApp template messages based on new status
         if req.status == 'completed' or req.status == 'cancelled':
+            # Fetch clinic name dynamically for the template
+            clinic_resp = supabase.table("clinics").select("business_name").eq("id", clinic_id).execute()
+            clinic_name = clinic_resp.data[0]["business_name"] if clinic_resp.data else "our clinic"
+            
             # Send Meta Template Message
             if META_ACCESS_TOKEN and META_PHONE_NUMBER_ID:
                 url = f"https://graph.facebook.com/v18.0/{META_PHONE_NUMBER_ID}/messages"
@@ -424,7 +428,18 @@ async def update_appointment_status(appointment_id: str, req: StatusUpdateReques
                         "name": template_name,
                         "language": {
                             "code": "en"
-                        }
+                        },
+                        "components": [
+                            {
+                                "type": "body",
+                                "parameters": [
+                                    {
+                                        "type": "text",
+                                        "text": clinic_name
+                                    }
+                                ]
+                            }
+                        ]
                     }
                 }
                 # Fire and forget
