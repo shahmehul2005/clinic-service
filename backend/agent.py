@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from supabase import create_client, Client
 import json
+import re
 from groq import Groq
 from dotenv import load_dotenv
 
@@ -168,7 +169,7 @@ def check_availability(clinic_id: str, date_str: str) -> dict:
         
         return {
             "status": "success",
-            "clinic_hours": "10:00 AM to 6:00 PM, 10-minute slots",
+            "clinic_hours": "10:00 AM to 8:00 PM, 10-minute slots",
             "already_booked_slots": booked,
             "instruction": "Offer the user 2 or 3 available slot times that are AT LEAST 10 minutes apart from any already_booked_slots."
         }
@@ -443,6 +444,27 @@ async def whatsapp_webhook(request: Request):
                                     response_message = response.choices[0].message
                                     chat_sessions[user_phone].append(response_message)
                                     
+                                    # Fallback manual parsing for Llama 3 tool hallucinations
+                                    fallback_tool_executed = False
+                                    if not response_message.tool_calls and response_message.content:
+                                        match = re.search(r'<function=(\w+)>(.*?)</function>', response_message.content, re.DOTALL)
+                                        if match:
+                                            function_name = match.group(1)
+                                            try:
+                                                function_args = json.loads(match.group(2))
+                                                if function_name == "check_availability":
+                                                    result = check_availability(function_args.get("clinic_id"), function_args.get("date_str"))
+                                                elif function_name == "book_slot":
+                                                    result = book_slot(function_args.get("clinic_id"), function_args.get("phone_number"), function_args.get("date_str"), function_args.get("time_str"), function_args.get("patient_name", "Unknown"))
+                                                else:
+                                                    result = {"error": "Unknown function"}
+                                                    
+                                                # Simulate tool response so the model can read it
+                                                chat_sessions[user_phone].append({"role": "user", "content": f"System Tool Result from {function_name}: {json.dumps(result)}"})
+                                                fallback_tool_executed = True
+                                            except json.JSONDecodeError:
+                                                pass
+
                                     if response_message.tool_calls:
                                         for tool_call in response_message.tool_calls:
                                             function_name = tool_call.function.name
@@ -462,10 +484,16 @@ async def whatsapp_webhook(request: Request):
                                                 "content": json.dumps(result)
                                             })
                                         # Loop continues to send tool results back to Groq
+                                    elif fallback_tool_executed:
+                                        # Loop again to let AI process the fallback tool result!
+                                        continue
                                     else:
                                         # Final text response
                                         if response_message.content:
-                                            send_whatsapp_message(user_phone, response_message.content)
+                                            # Clean any weird tags just in case before sending to WhatsApp
+                                            clean_text = re.sub(r'<function=.*?</function>', '', response_message.content, flags=re.DOTALL).strip()
+                                            if clean_text:
+                                                send_whatsapp_message(user_phone, clean_text)
                                         break
                                         
                             except Exception as api_err:
