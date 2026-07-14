@@ -7,8 +7,8 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from supabase import create_client, Client
-from google import genai
-from google.genai import types
+import json
+from groq import Groq
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -218,8 +218,8 @@ def book_slot(clinic_id: str, phone_number: str, date_str: str, time_str: str, p
             return {"status": "error", "message": "CRITICAL: Slot taken. Apologize and offer another time."}
         return {"status": "error", "message": f"Database error: {error_msg}"}
 
-# 3. Initialize the Google GenAI Client (Hindi by default)
-client = genai.Client()
+# 3. Initialize the Groq Client
+client = Groq() # automatically looks for GROQ_API_KEY in env
 
 instruction = (
     "You are a professional, friendly clinic receptionist chatbot. You must stay focused on your primary goal: guiding the patient through a flow to book an appointment.\n"
@@ -235,11 +235,41 @@ instruction = (
     "Keep your WhatsApp messages warm, short, and formatted with spacing for readability."
 )
 
-agent_config = types.GenerateContentConfig(
-    system_instruction=instruction,
-    tools=[check_availability, book_slot],
-    temperature=0.7
-)
+groq_tools = [
+    {
+        "type": "function",
+        "function": {
+            "name": "check_availability",
+            "description": "Checks Supabase for booked slots on a specific date for a specific clinic.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "clinic_id": {"type": "string"},
+                    "date_str": {"type": "string", "description": "Date in YYYY-MM-DD format"}
+                },
+                "required": ["clinic_id", "date_str"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "book_slot",
+            "description": "Books the appointment slot in the database.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "clinic_id": {"type": "string"},
+                    "phone_number": {"type": "string"},
+                    "date_str": {"type": "string", "description": "YYYY-MM-DD"},
+                    "time_str": {"type": "string", "description": "HH:MM"},
+                    "patient_name": {"type": "string"}
+                },
+                "required": ["clinic_id", "phone_number", "date_str", "time_str", "patient_name"]
+            }
+        }
+    }
+]
 
 # In-memory dictionary to hold multi-turn conversation history per phone number
 chat_sessions = {}
@@ -396,26 +426,54 @@ async def whatsapp_webhook(request: Request):
                             
                             # Retrieve or create a chat session for this user to maintain multi-turn history
                             if user_phone not in chat_sessions:
-                                chat_sessions[user_phone] = client.chats.create(
-                                    model="gemini-2.5-flash",
-                                    config=agent_config
-                                )
+                                chat_sessions[user_phone] = [{"role": "system", "content": instruction}]
+                                
+                            chat_sessions[user_phone].append({"role": "user", "content": agent_prompt})
                                 
                             try:
-                                response = chat_sessions[user_phone].send_message(agent_prompt)
-                                
-                                # Send reply back to Meta API
-                                if response.text:
-                                    send_whatsapp_message(user_phone, response.text)
-                                else:
-                                    print(f"WARNING: response.text is empty! Full response: {response}")
+                                while True:
+                                    response = client.chat.completions.create(
+                                        model="llama3-8b-8192",
+                                        messages=chat_sessions[user_phone],
+                                        tools=groq_tools,
+                                        tool_choice="auto",
+                                        temperature=0.4
+                                    )
+                                    
+                                    response_message = response.choices[0].message
+                                    chat_sessions[user_phone].append(response_message)
+                                    
+                                    if response_message.tool_calls:
+                                        for tool_call in response_message.tool_calls:
+                                            function_name = tool_call.function.name
+                                            function_args = json.loads(tool_call.function.arguments)
+                                            
+                                            if function_name == "check_availability":
+                                                result = check_availability(function_args.get("clinic_id"), function_args.get("date_str"))
+                                            elif function_name == "book_slot":
+                                                result = book_slot(function_args.get("clinic_id"), function_args.get("phone_number"), function_args.get("date_str"), function_args.get("time_str"), function_args.get("patient_name", "Unknown"))
+                                            else:
+                                                result = {"error": "Unknown function"}
+                                                
+                                            chat_sessions[user_phone].append({
+                                                "tool_call_id": tool_call.id,
+                                                "role": "tool",
+                                                "name": function_name,
+                                                "content": json.dumps(result)
+                                            })
+                                        # Loop continues to send tool results back to Groq
+                                    else:
+                                        # Final text response
+                                        if response_message.content:
+                                            send_whatsapp_message(user_phone, response_message.content)
+                                        break
+                                        
                             except Exception as api_err:
                                 error_str = str(api_err)
-                                if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                                if "429" in error_str or "rate limit" in error_str.lower():
                                     send_whatsapp_message(user_phone, "Our AI receptionist is currently experiencing high traffic. Please wait about 1 minute and send your message again!")
                                     print(f"API Rate limit hit for {user_phone}: {error_str}")
                                 else:
-                                    # Rethrow if it's a different error
                                     raise api_err
                             
             return Response(status_code=200)

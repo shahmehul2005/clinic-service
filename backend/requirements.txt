@@ -1,6 +1,6 @@
 fastapi
 uvicorn
 supabase
-google-adk
+groq
 python-dotenv
 requests
