@@ -378,6 +378,56 @@ async def upgrade_clinic(req: UpgradeRequest):
         from fastapi.responses import JSONResponse
         return JSONResponse(status_code=500, content={"detail": str(e)})
 
+class StatusUpdateRequest(BaseModel):
+    status: str
+
+@app.put("/api/admin/appointments/{appointment_id}/status")
+async def update_appointment_status(appointment_id: str, req: StatusUpdateRequest):
+    """Updates appointment status and sends automated WhatsApp messages."""
+    try:
+        # 1. Fetch appointment details to get patient phone and clinic_id
+        apt_response = supabase.table("appointments").select("phone_number, clinic_id, patient_name").eq("id", appointment_id).execute()
+        if not apt_response.data:
+            from fastapi.responses import JSONResponse
+            return JSONResponse(status_code=404, content={"detail": "Appointment not found"})
+            
+        apt = apt_response.data[0]
+        patient_phone = apt["phone_number"]
+        clinic_id = apt["clinic_id"]
+        
+        # 2. Update the status in the database
+        supabase.table("appointments").update({"status": req.status}).eq("id", appointment_id).execute()
+        
+        # 3. If status is 'completed', trigger the WhatsApp template message
+        if req.status == 'completed':
+            # Send Meta Template Message
+            if META_ACCESS_TOKEN and META_PHONE_NUMBER_ID:
+                url = f"https://graph.facebook.com/v18.0/{META_PHONE_NUMBER_ID}/messages"
+                headers = {
+                    "Authorization": f"Bearer {META_ACCESS_TOKEN}",
+                    "Content-Type": "application/json"
+                }
+                payload = {
+                    "messaging_product": "whatsapp",
+                    "recipient_type": "individual",
+                    "to": patient_phone,
+                    "type": "template",
+                    "template": {
+                        "name": "visit_thanks",
+                        "language": {
+                            "code": "en"
+                        }
+                    }
+                }
+                # Fire and forget
+                requests.post(url, headers=headers, json=payload)
+                print(f"Sent 'visit_thanks' template to {patient_phone}")
+                
+        return {"status": "success", "message": f"Status updated to {req.status}"}
+    except Exception as e:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=500, content={"detail": str(e)})
+
 # 5. Webhook Ingestion (POST) for WhatsApp Messages (Secured with Signature check)
 @app.post("/webhook")
 async def whatsapp_webhook(request: Request):

@@ -63,13 +63,21 @@ const Dashboard = () => {
   }, [clinicId]);
 
   const handleUpdateStatus = async (id, newStatus) => {
-    const { error } = await supabase
-      .from('appointments')
-      .update({ status: newStatus })
-      .eq('id', id);
+    try {
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/admin/appointments/${id}/status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+      });
       
-    if (!error) {
-      setAppointments(prev => prev.map(apt => apt.id === id ? { ...apt, status: newStatus } : apt));
+      if (response.ok) {
+        setAppointments(prev => prev.map(apt => apt.id === id ? { ...apt, status: newStatus } : apt));
+      } else {
+        const errorData = await response.json();
+        alert("Failed to update status: " + (errorData.detail || 'Unknown error'));
+      }
+    } catch (error) {
+      alert("Network error updating status.");
     }
   };
 
@@ -136,6 +144,18 @@ const Dashboard = () => {
     apt.patient_name?.toLowerCase().includes(searchQuery.toLowerCase()) || 
     apt.phone_number?.includes(searchQuery)
   );
+
+  const todayAppointments = filteredAppointments.filter(apt => {
+    const aptDate = new Date(apt.appointment_time).toLocaleDateString();
+    const today = new Date().toLocaleDateString();
+    return aptDate === today;
+  });
+
+  const upcomingAppointments = filteredAppointments.filter(apt => {
+    const aptDate = new Date(apt.appointment_time).toLocaleDateString();
+    const today = new Date().toLocaleDateString();
+    return aptDate !== today && new Date(apt.appointment_time) > new Date();
+  });
 
   const uniquePatients = useMemo(() => {
     const map = new Map();
@@ -232,11 +252,11 @@ const Dashboard = () => {
               <div style={{ fontSize: '0.75rem', opacity: 0.9 }}>{t('dashboard.overviewDesc')}</div>
             </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.8rem 1rem', borderRadius: '12px', color: 'var(--text-secondary)', cursor: 'not-allowed', opacity: 0.5 }}>
+          <div onClick={() => setActiveTab('upcoming')} style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.8rem 1rem', borderRadius: '12px', background: activeTab === 'upcoming' ? 'var(--v0-blue)' : 'transparent', color: activeTab === 'upcoming' ? 'white' : 'var(--text-secondary)', cursor: 'pointer' }}>
             <Calendar size={20} /> 
             <div>
-              <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-main)', lineHeight: 1.2 }}>{t('dashboard.appointments')}</div>
-              <div style={{ fontSize: '0.75rem' }}>{t('dashboard.appointmentsDesc')}</div>
+              <div style={{ fontWeight: 600, fontSize: '0.9rem', color: activeTab === 'upcoming' ? 'white' : 'var(--text-main)', lineHeight: 1.2 }}>{t('dashboard.appointments')}</div>
+              <div style={{ fontSize: '0.75rem', opacity: activeTab === 'upcoming' ? 0.9 : 1 }}>Upcoming Schedules</div>
             </div>
           </div>
           <div onClick={() => setActiveTab('patients')} style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.8rem 1rem', borderRadius: '12px', background: activeTab === 'patients' ? 'var(--v0-blue)' : 'transparent', color: activeTab === 'patients' ? 'white' : 'var(--text-secondary)', cursor: 'pointer' }}>
@@ -358,12 +378,12 @@ const Dashboard = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredAppointments.length === 0 ? (
+                  {todayAppointments.length === 0 ? (
                     <tr>
-                      <td colSpan="5" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-secondary)' }}>{t('dashboard.noPatients')}</td>
+                      <td colSpan="5" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-secondary)' }}>No appointments today.</td>
                     </tr>
                   ) : (
-                    filteredAppointments.map((apt, index) => (
+                    todayAppointments.map((apt, index) => (
                       <tr key={apt.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
                         <td style={{ padding: '1.25rem 1.5rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
                           <div style={{ background: 'var(--v0-blue-light)', color: 'var(--v0-blue)', padding: '0.5rem', borderRadius: '50%' }}>
@@ -400,6 +420,76 @@ const Dashboard = () => {
                           )}
                           
                           {/* Delete Icon */}
+                          <button onClick={() => handleDeleteAppointment(apt.id)} style={{ padding: '0.5rem', marginLeft: '0.5rem', color: 'var(--text-secondary)' }} title="Delete Record">
+                            <Trash2 size={16} style={{ cursor: 'pointer' }} onMouseOver={(e) => e.currentTarget.style.color = 'var(--v0-red)'} onMouseOut={(e) => e.currentTarget.style.color = 'var(--text-secondary)'} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
+        ) : activeTab === 'upcoming' ? (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '1.5rem' }}>
+              <div>
+                <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-main)' }}>Upcoming Appointments</h2>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Schedules for tomorrow and beyond</p>
+              </div>
+              <div style={{ position: 'relative', width: '300px' }}>
+                <Search size={18} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
+                <input 
+                  type="text" 
+                  placeholder={t('dashboard.searchPh')} 
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="form-input" 
+                  style={{ paddingLeft: '2.5rem', borderRadius: '999px' }} 
+                />
+              </div>
+            </div>
+
+            <div className="card" style={{ overflow: 'hidden' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                <thead>
+                  <tr style={{ background: '#f0f9ff', borderBottom: '1px solid var(--border-color)' }}>
+                    <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Date</th>
+                    <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{t('dashboard.thName')}</th>
+                    <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{t('dashboard.thPhone')}</th>
+                    <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{t('dashboard.thTime')}</th>
+                    <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{t('dashboard.thStatus')}</th>
+                    <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.5px', textAlign: 'right' }}>{t('dashboard.thActions')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {upcomingAppointments.length === 0 ? (
+                    <tr>
+                      <td colSpan="6" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-secondary)' }}>No upcoming appointments.</td>
+                    </tr>
+                  ) : (
+                    upcomingAppointments.map((apt, index) => (
+                      <tr key={apt.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                        <td style={{ padding: '1.25rem 1.5rem', color: 'var(--text-main)', fontSize: '0.9rem', fontWeight: 600 }}>
+                          {new Date(apt.appointment_time).toLocaleDateString([], {month: 'short', day: 'numeric'})}
+                        </td>
+                        <td style={{ padding: '1.25rem 1.5rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                          <div>
+                            <div style={{ fontWeight: 600, color: 'var(--text-main)', fontSize: '0.95rem' }}>{apt.patient_name || 'Unknown'}</div>
+                          </div>
+                        </td>
+                        <td style={{ padding: '1.25rem 1.5rem', color: 'var(--text-main)', fontSize: '0.9rem', fontWeight: 500 }}>{apt.phone_number}</td>
+                        <td style={{ padding: '1.25rem 1.5rem', color: 'var(--text-main)', fontSize: '0.9rem', fontWeight: 600 }}>{new Date(apt.appointment_time).toLocaleTimeString([], {hour: 'numeric', minute:'2-digit'})}</td>
+                        <td style={{ padding: '1.25rem 1.5rem' }}>
+                          {renderBadge(apt.status)}
+                        </td>
+                        <td style={{ padding: '1.25rem 1.5rem', textAlign: 'right', display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', alignItems: 'center', height: '76px' }}>
+                          {apt.status !== 'completed' && apt.status !== 'cancelled' && (
+                            <button onClick={() => handleUpdateStatus(apt.id, 'cancelled')} className="btn-action btn-v0-danger">
+                              <XCircle size={16} /> {t('dashboard.actionCancel')}
+                            </button>
+                          )}
                           <button onClick={() => handleDeleteAppointment(apt.id)} style={{ padding: '0.5rem', marginLeft: '0.5rem', color: 'var(--text-secondary)' }} title="Delete Record">
                             <Trash2 size={16} style={{ cursor: 'pointer' }} onMouseOver={(e) => e.currentTarget.style.color = 'var(--v0-red)'} onMouseOut={(e) => e.currentTarget.style.color = 'var(--text-secondary)'} />
                           </button>
