@@ -433,7 +433,7 @@ async def whatsapp_webhook(request: Request):
                             try:
                                 while True:
                                     response = client.chat.completions.create(
-                                        model="llama3-8b-8192",
+                                        model="llama-3.1-8b-instant",
                                         messages=chat_sessions[user_phone],
                                         tools=groq_tools,
                                         tool_choice="auto",
