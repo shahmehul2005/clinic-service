@@ -160,16 +160,17 @@ def check_availability(clinic_id: str, date_str: str) -> dict:
         response = supabase.table("appointments") \
             .select("appointment_time") \
             .eq("clinic_id", clinic_id) \
-            .like("appointment_time", f"{date_str}%") \
+            .gte("appointment_time", f"{date_str} 00:00:00") \
+            .lte("appointment_time", f"{date_str} 23:59:59") \
             .execute()
             
         booked = [record["appointment_time"] for record in response.data]
         
         return {
             "status": "success",
-            "clinic_hours": "10:00 AM to 6:00 PM, 30-minute slots",
+            "clinic_hours": "10:00 AM to 6:00 PM, 10-minute slots",
             "already_booked_slots": booked,
-            "instruction": "Offer the user 2 or 3 available slot times that are NOT in the already_booked_slots list."
+            "instruction": "Offer the user 2 or 3 available slot times that are AT LEAST 10 minutes apart from any already_booked_slots."
         }
     except Exception as e:
         return {"status": "error", "error_message": str(e)}
@@ -187,6 +188,22 @@ def book_slot(clinic_id: str, phone_number: str, date_str: str, time_str: str, p
     timestamp = f"{date_str} {time_str}"
     
     try:
+        # 1. Check for 10-minute conflicts
+        target_dt = datetime.strptime(timestamp, "%Y-%m-%d %H:%M")
+        start_window = (target_dt - timedelta(minutes=9)).strftime("%Y-%m-%d %H:%M:%S")
+        end_window = (target_dt + timedelta(minutes=9)).strftime("%Y-%m-%d %H:%M:%S")
+        
+        conflict_check = supabase.table("appointments") \
+            .select("appointment_time") \
+            .eq("clinic_id", clinic_id) \
+            .gte("appointment_time", start_window) \
+            .lte("appointment_time", end_window) \
+            .execute()
+            
+        if conflict_check.data:
+            return {"status": "error", "message": "CRITICAL: Slot is taken (another patient is booked within 10 minutes of this time). Apologize and offer another time."}
+
+        # 2. Insert if free
         supabase.table("appointments").insert({
             "clinic_id": clinic_id,
             "phone_number": phone_number,
@@ -371,8 +388,8 @@ async def whatsapp_webhook(request: Request):
                             else:
                                 # First time patient - fetch all available clinics to display options
                                 clinics = get_all_clinics()
-                                clinics_str = ", ".join([f"{c['business_name']} (ID: {c['id']})" for c in clinics])
-                                context = f"[Context: phone={user_phone}, IS_FIRST_TIME=True, available_clinics=[{clinics_str}]]"
+                                clinics_str = ", ".join([f"[Name: '{c['business_name']}', Internal_ID: '{c['id']}']" for c in clinics])
+                                context = f"[Context: phone={user_phone}, IS_FIRST_TIME=True, available_clinics={clinics_str}]"
                                 
                             current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                             agent_prompt = f"[Current System Time: {current_time}]\n{context}\nUser says: {user_message}"
