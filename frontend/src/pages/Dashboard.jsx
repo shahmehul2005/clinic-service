@@ -77,7 +77,8 @@ const Dashboard = () => {
         alert("Failed to update status: " + (errorData.detail || 'Unknown error'));
       }
     } catch (error) {
-      alert("Network error updating status.");
+      console.error("Status Update Error:", error);
+      alert("Network error updating status. Make sure VITE_BACKEND_URL is set in Render.");
     }
   };
 
