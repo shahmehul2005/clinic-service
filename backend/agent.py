@@ -401,13 +401,22 @@ async def whatsapp_webhook(request: Request):
                                     config=agent_config
                                 )
                                 
-                            response = chat_sessions[user_phone].send_message(agent_prompt)
-                            
-                            # Send reply back to Meta API
-                            if response.text:
-                                send_whatsapp_message(user_phone, response.text)
-                            else:
-                                print(f"WARNING: response.text is empty! Full response: {response}")
+                            try:
+                                response = chat_sessions[user_phone].send_message(agent_prompt)
+                                
+                                # Send reply back to Meta API
+                                if response.text:
+                                    send_whatsapp_message(user_phone, response.text)
+                                else:
+                                    print(f"WARNING: response.text is empty! Full response: {response}")
+                            except Exception as api_err:
+                                error_str = str(api_err)
+                                if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                                    send_whatsapp_message(user_phone, "Our AI receptionist is currently experiencing high traffic. Please wait about 1 minute and send your message again!")
+                                    print(f"API Rate limit hit for {user_phone}: {error_str}")
+                                else:
+                                    # Rethrow if it's a different error
+                                    raise api_err
                             
             return Response(status_code=200)
         else:
