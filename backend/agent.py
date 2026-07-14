@@ -189,7 +189,12 @@ def book_slot(clinic_id: str, phone_number: str, date_str: str, time_str: str, p
     timestamp = f"{date_str} {time_str}"
     
     try:
-        # 1. Check for 10-minute conflicts
+        # 1. Check if time is in the past
+        target_dt = datetime.strptime(timestamp, "%Y-%m-%d %H:%M")
+        if target_dt < datetime.now():
+            return {"status": "error", "message": "CRITICAL: Cannot book appointments in the past. Ask the user for a future date/time."}
+            
+        # 2. Check for 10-minute conflicts
         target_dt = datetime.strptime(timestamp, "%Y-%m-%d %H:%M")
         start_window = (target_dt - timedelta(minutes=9)).strftime("%Y-%m-%d %H:%M:%S")
         end_window = (target_dt + timedelta(minutes=9)).strftime("%Y-%m-%d %H:%M:%S")
@@ -398,8 +403,8 @@ async def update_appointment_status(appointment_id: str, req: StatusUpdateReques
         # 2. Update the status in the database
         supabase.table("appointments").update({"status": req.status}).eq("id", appointment_id).execute()
         
-        # 3. If status is 'completed', trigger the WhatsApp template message
-        if req.status == 'completed':
+        # 3. Trigger WhatsApp template messages based on new status
+        if req.status == 'completed' or req.status == 'cancelled':
             # Send Meta Template Message
             if META_ACCESS_TOKEN and META_PHONE_NUMBER_ID:
                 url = f"https://graph.facebook.com/v18.0/{META_PHONE_NUMBER_ID}/messages"
@@ -407,13 +412,16 @@ async def update_appointment_status(appointment_id: str, req: StatusUpdateReques
                     "Authorization": f"Bearer {META_ACCESS_TOKEN}",
                     "Content-Type": "application/json"
                 }
+                
+                template_name = "visit_thanks" if req.status == 'completed' else "appointment_cancelled"
+                
                 payload = {
                     "messaging_product": "whatsapp",
                     "recipient_type": "individual",
                     "to": patient_phone,
                     "type": "template",
                     "template": {
-                        "name": "visit_thanks",
+                        "name": template_name,
                         "language": {
                             "code": "en"
                         }
@@ -421,7 +429,7 @@ async def update_appointment_status(appointment_id: str, req: StatusUpdateReques
                 }
                 # Fire and forget
                 requests.post(url, headers=headers, json=payload)
-                print(f"Sent 'visit_thanks' template to {patient_phone}")
+                print(f"Sent '{template_name}' template to {patient_phone}")
                 
         return {"status": "success", "message": f"Status updated to {req.status}"}
     except Exception as e:
