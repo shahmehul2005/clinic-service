@@ -15,3 +15,16 @@ $$ LANGUAGE plpgsql;
 
 -- Schedule the function to run every day at midnight (UTC)
 SELECT cron.schedule('cleanup-noshows', '0 0 * * *', 'SELECT delete_noshow_appointments()');
+
+-- Create a function to reset token queues for tokenized clinics
+CREATE OR REPLACE FUNCTION reset_daily_tokens()
+RETURNS void AS $$
+BEGIN
+    UPDATE clinics
+    SET current_serving_token = 0
+    WHERE booking_mode = 'token';
+END;
+$$ LANGUAGE plpgsql;
+
+-- Schedule the token reset to run every day at midnight IST (18:30 UTC)
+SELECT cron.schedule('reset-tokens', '30 18 * * *', 'SELECT reset_daily_tokens()');
