@@ -662,7 +662,7 @@ def process_whatsapp_message(payload: dict):
                             user_message = message_obj["text"]["body"]
                             
                             # Retrieve smart clinic context based on patient booking history
-                            clinic_id, clinic_name, booking_mode = get_patient_clinic_context(user_phone)
+                            clinic_id, clinic_name, booking_mode, extra_context = get_patient_clinic_context(user_phone)
                             
                             if clinic_id:
                                 if not is_clinic_active(clinic_id):
@@ -672,7 +672,7 @@ def process_whatsapp_message(payload: dict):
                                 # Returning patient - auto route to their clinic
                                 clinics = get_all_clinics()
                                 clinics_str = ", ".join([f"[Name: '{c['business_name']}', Internal_ID: '{c['id']}', booking_mode: '{c.get('booking_mode', 'scheduled')}']" for c in clinics])
-                                context = f"[Context: clinic_id={clinic_id}, clinic_name='{clinic_name}', booking_mode='{booking_mode}', phone={user_phone}, available_clinics={clinics_str}]"
+                                context = f"[Context: clinic_id={clinic_id}, clinic_name='{clinic_name}', booking_mode='{booking_mode}', phone={user_phone}, available_clinics={clinics_str}, clinic_settings={json.dumps(extra_context)}]"
                             else:
                                 # First time patient - fetch all available clinics to display options
                                 clinics = get_all_clinics()
