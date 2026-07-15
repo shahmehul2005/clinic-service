@@ -364,14 +364,14 @@ instruction = (
     
     "WORKFLOW A: SCHEDULED CLINICS (`booking_mode='scheduled'`)\n"
     "1. Ask for their preferred date and time. (If `patient_name` is NOT in Context, ask for their name too. If it is, just use it!).\n"
-    "2. If they provide a date and time, call `check_availability`.\n"
+    "2. If they provide ANY colloquial time (e.g. 'aaj 4 baje', 'tomorrow evening'), immediately deduce the YYYY-MM-DD date using the Current System Time and convert the time to 24-hour HH:MM format (e.g. 16:00), then call `check_availability`! Do NOT ask them for more specific times if you can figure it out.\n"
     "3. If the slot is free, call `book_slot` to confirm.\n"
     "4. If the time clashes, ask for another time.\n"
     "5. If they explicitly ask 'what slots are free today?', use `check_availability` to list slots. Do NOT list slots preemptively.\n\n"
     
     "WORKFLOW B: TOKENIZED CLINICS (`booking_mode='token'`)\n"
     "1. If `patient_name` is NOT in Context, ask for it. If it is, skip this.\n"
-    "2. Tell them the `current_serving_token` and `last_token` strictly using the numbers provided in the `available_clinics` list for this clinic.\n"
+    "2. Inform them of the queue status using natural phrasing like 'The doctor is currently seeing token #X, and the last booked token is #Y' (using the `current_serving` and `last_token` from the `available_clinics` context).\n"
     "3. Ask 'Do you want to book an appointment for today?'. (Token clinics ONLY book for today).\n"
     "4. If they say YES: Immediately call the `generate_token` tool.\n"
     "5. If they say NO or ask about anything else: Decline politely, as this is not our concern.\n\n"

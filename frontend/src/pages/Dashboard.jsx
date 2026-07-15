@@ -119,6 +119,10 @@ const Dashboard = () => {
   };
 
   const handleCallNext = async () => {
+    if (bookingMode === 'token' && todayAppointments.length === 0) {
+      alert("No patients waiting in the live queue!");
+      return;
+    }
     const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
     const response = await fetch(`${apiUrl}/api/queue/call-next`, {
       method: 'POST',
