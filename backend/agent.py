@@ -2,7 +2,7 @@ import os
 import hmac
 import hashlib
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI, Request, Response, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -13,6 +13,12 @@ from groq import Groq
 from dotenv import load_dotenv
 
 load_dotenv()
+
+
+# Timezone Helper
+IST = timezone(timedelta(hours=5, minutes=30))
+def get_now():
+    return datetime.now(IST)
 
 app = FastAPI()
 
@@ -62,7 +68,7 @@ def get_all_clinics() -> list:
             .select("id, business_name, trial_end_date, booking_mode, current_serving_token, closed_date, working_days, working_hours") \
             .execute()
         if response.data:
-            now = datetime.now()
+            now = get_now()
             today_str = now.strftime("%Y-%m-%d")
             active_clinics = []
             for c in response.data:
@@ -90,7 +96,7 @@ def is_clinic_active(clinic_id: str) -> bool:
             trial_end_date = response.data[0].get("trial_end_date")
             if not trial_end_date:
                 return True # Permanent
-            return datetime.fromisoformat(trial_end_date.replace('Z', '+00:00')) > datetime.now().astimezone()
+            return datetime.fromisoformat(trial_end_date.replace('Z', '+00:00')) > get_now().astimezone()
     except Exception as e:
         print(f"Error checking clinic active status: {e}")
     return False
@@ -103,7 +109,7 @@ def check_and_increment_usage() -> bool:
     Returns True if allowed, False if limit exceeded.
     """
     try:
-        current_month = datetime.now().strftime("%Y-%m")
+        current_month = get_now().strftime("%Y-%m")
         # Fetch current count
         response = supabase.table("api_usage").select("message_count").eq("month_year", current_month).execute()
         
@@ -176,7 +182,7 @@ def check_availability(clinic_id: str, date_str: str) -> dict:
             
         import random
         available_slots = []
-        now = datetime.now()
+        now = get_now()
         is_today = (date_str == now.strftime("%Y-%m-%d"))
         
         for h in range(10, 20):
@@ -247,7 +253,7 @@ def book_slot(clinic_id: str, phone_number: str, date_str: str, time_str: str, p
 
         # 1. Check if time is in the past
         target_dt = datetime.strptime(timestamp, "%Y-%m-%d %H:%M")
-        if target_dt < datetime.now():
+        if target_dt < get_now():
             return {"status": "error", "message": "CRITICAL: Cannot book appointments in the past. Ask the user for a future date/time."}
             
         # 2. Check for 10-minute conflicts
@@ -281,7 +287,7 @@ def book_slot(clinic_id: str, phone_number: str, date_str: str, time_str: str, p
 
 def generate_token(clinic_id: str, phone_number: str, patient_name: str = "Unknown") -> dict:
     """Generates a queue token for clinics in token mode."""
-    today_str = datetime.now().strftime("%Y-%m-%d")
+    today_str = get_now().strftime("%Y-%m-%d")
     try:
         # Get current max token for today
         response = supabase.table("appointments") \
@@ -309,7 +315,7 @@ def generate_token(clinic_id: str, phone_number: str, patient_name: str = "Unkno
         if cdata.get("closed_date") == today_str:
             return {"status": "error", "message": "CRITICAL: The clinic is closed for today. Tell the patient no more tokens are being issued today."}
         
-        now = datetime.now()
+        now = get_now()
         day_name = now.strftime("%A")
         working_days = cdata.get("working_days") or []
         working_hours = cdata.get("working_hours") or {}
@@ -322,7 +328,7 @@ def generate_token(clinic_id: str, phone_number: str, patient_name: str = "Unkno
                 return {"status": "error", "message": f"CRITICAL: The clinic is closed right now. Working hours are {start_time} to {end_time}. Tell the patient."}
                 
         # Insert appointment with token
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        timestamp = get_now().strftime("%Y-%m-%d %H:%M:%S")
         supabase.table("appointments").insert({
             "clinic_id": clinic_id,
             "phone_number": phone_number,
@@ -530,7 +536,7 @@ async def onboard_clinic(req: OnboardRequest):
         user_id = auth_response.user.id
         
         # 2. Insert into Clinics table with 7-day trial
-        trial_end = (datetime.now() + timedelta(days=7)).isoformat()
+        trial_end = (get_now() + timedelta(days=7)).isoformat()
         
         # We use the shared META_PHONE_NUMBER_ID for the MVP
         clinic_response = supabase.table("clinics").insert({
@@ -681,7 +687,7 @@ def process_whatsapp_message(payload: dict):
                             clinics_str = ", ".join(clinics_data)
                             context = f"[Context: phone={user_phone}, patient_name='{patient_name}', available_clinics={clinics_str}]"
                             
-                            current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                            current_time = get_now().strftime("%Y-%m-%d %H:%M:%S")
                             agent_prompt = f"[Current System Time: {current_time}]\n{context}\nUser says: {user_message}"
                             
                             # Retrieve or create a chat session for this user to maintain multi-turn history
@@ -839,7 +845,7 @@ class CloseDayRequest(BaseModel):
 def api_close_day(req: CloseDayRequest, bg_tasks: BackgroundTasks):
     """Closes the clinic for the rest of the day and cancels remaining booked appointments."""
     try:
-        today_str = datetime.now().strftime("%Y-%m-%d")
+        today_str = get_now().strftime("%Y-%m-%d")
         
         # 1. Set closed_date
         supabase.table("clinics").update({"closed_date": today_str}).eq("id", req.clinic_id).execute()
