@@ -17,6 +17,8 @@ const Dashboard = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isTrialExpired, setIsTrialExpired] = useState(false);
   const [clinicName, setClinicName] = useState('Sanwariya Tech');
+  const [bookingMode, setBookingMode] = useState('scheduled');
+  const [currentServingToken, setCurrentServingToken] = useState(0);
   const [activeTab, setActiveTab] = useState('overview');
   
   // Extract user's dynamic clinic ID, or default to mock for testing
@@ -34,12 +36,14 @@ const Dashboard = () => {
     const fetchClinicData = async () => {
       const { data, error } = await supabase
         .from('clinics')
-        .select('business_name, trial_end_date')
+        .select('business_name, trial_end_date, booking_mode, current_serving_token')
         .eq('id', clinicId)
         .single();
         
       if (!error && data) {
         setClinicName(data.business_name);
+        setBookingMode(data.booking_mode || 'scheduled');
+        setCurrentServingToken(data.current_serving_token || 0);
         if (data.trial_end_date && new Date() > new Date(data.trial_end_date)) {
           setIsTrialExpired(true);
         }
@@ -98,6 +102,36 @@ const Dashboard = () => {
     }
   };
 
+  const handleToggleMode = async () => {
+    const newMode = bookingMode === 'scheduled' ? 'token' : 'scheduled';
+    if (!window.confirm(`Are you sure you want to switch to ${newMode} mode?`)) return;
+    
+    const { error } = await supabase
+      .from('clinics')
+      .update({ booking_mode: newMode })
+      .eq('id', clinicId);
+      
+    if (!error) {
+      setBookingMode(newMode);
+    } else {
+      alert("Failed to switch modes: " + error.message);
+    }
+  };
+
+  const handleCallNext = async () => {
+    const nextToken = currentServingToken + 1;
+    const { error } = await supabase
+      .from('clinics')
+      .update({ current_serving_token: nextToken })
+      .eq('id', clinicId);
+      
+    if (!error) {
+      setCurrentServingToken(nextToken);
+    } else {
+      alert("Failed to update token counter: " + error.message);
+    }
+  };
+
   const handleAddAppointment = async (e) => {
     e.preventDefault();
     setSubmitError('');
@@ -108,17 +142,30 @@ const Dashboard = () => {
       return;
     }
     
-    // Combine date and time into ISO string
-    const appointmentDateTime = new Date(`${newDate}T${newTime}`).toISOString();
-    
-    // Construct payload based on updated schema
-    const payload = {
-      clinic_id: clinicId, // Dynamically use the logged in user's clinic ID
-      phone_number: cleanPhone,
-      patient_name: newPatientName,
-      appointment_time: appointmentDateTime,
-      status: 'booked'
-    };
+    let payload = {};
+    if (bookingMode === 'token') {
+      const today = new Date().toLocaleDateString();
+      const todaysApts = appointments.filter(a => new Date(a.appointment_time).toLocaleDateString() === today);
+      const maxToken = todaysApts.reduce((max, apt) => Math.max(max, apt.token_number || 0), 0);
+      
+      payload = {
+        clinic_id: clinicId,
+        phone_number: cleanPhone,
+        patient_name: newPatientName,
+        appointment_time: new Date().toISOString(),
+        status: 'booked',
+        token_number: maxToken + 1
+      };
+    } else {
+      const appointmentDateTime = new Date(`${newDate}T${newTime}`).toISOString();
+      payload = {
+        clinic_id: clinicId,
+        phone_number: cleanPhone,
+        patient_name: newPatientName,
+        appointment_time: appointmentDateTime,
+        status: 'booked'
+      };
+    }
     
     const { data, error } = await supabase
       .from('appointments')
@@ -126,13 +173,12 @@ const Dashboard = () => {
       .select();
       
     if (error) {
-      if (error.code === '23505') { // Postgres Unique Constraint Violation
+      if (error.code === '23505') {
         setSubmitError("Slot already booked! Please select a different time.");
       } else {
         setSubmitError(error.message);
       }
     } else if (data) {
-      // Success
       setAppointments(prev => [...prev, data[0]].sort((a, b) => new Date(a.appointment_time) - new Date(b.appointment_time)));
       setIsModalOpen(false);
       setNewPatientName('');
@@ -151,7 +197,7 @@ const Dashboard = () => {
     const aptDate = new Date(apt.appointment_time).toLocaleDateString();
     const today = new Date().toLocaleDateString();
     return aptDate === today;
-  });
+  }).sort((a, b) => bookingMode === 'token' ? (a.token_number || 0) - (b.token_number || 0) : new Date(a.appointment_time) - new Date(b.appointment_time));
 
   const upcomingAppointments = filteredAppointments.filter(apt => {
     const aptDate = new Date(apt.appointment_time).toLocaleDateString();
@@ -298,6 +344,9 @@ const Dashboard = () => {
             </p>
           </div>
           <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+            <button onClick={handleToggleMode} className="btn-v0-outline" style={{ padding: '0.75rem 1.5rem', fontSize: '1rem', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Clock size={16} /> Mode: {bookingMode === 'token' ? 'Token Queue' : 'Scheduled'}
+            </button>
             <button onClick={() => i18n.changeLanguage(i18n.language === 'en' ? 'hi' : 'en')} className="btn-v0-outline" style={{ padding: '0.75rem 1.5rem', fontSize: '1rem', borderRadius: '8px' }}>
               {i18n.language === 'en' ? 'हिंदी' : 'English'}
             </button>
@@ -368,13 +417,28 @@ const Dashboard = () => {
               </div>
             </div>
 
+            {bookingMode === 'token' && (
+              <div style={{ marginBottom: '3rem', background: 'white', borderRadius: '16px', padding: '2.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}>
+                <div>
+                  <h3 style={{ color: 'var(--text-secondary)', fontSize: '1.25rem', fontWeight: 600, marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '1px' }}>Live Token Queue</h3>
+                  <div style={{ fontSize: '3.5rem', fontWeight: 800, color: 'var(--text-main)', lineHeight: 1 }}>
+                    CURRENTLY SERVING: <span style={{ color: 'var(--v0-blue)' }}>#{currentServingToken}</span>
+                  </div>
+                </div>
+                <button onClick={handleCallNext} style={{ background: 'var(--v0-blue)', color: 'white', border: 'none', padding: '1.5rem 3rem', borderRadius: '12px', fontSize: '1.5rem', fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 14px 0 rgba(10, 102, 194, 0.39)', transition: 'all 0.2s' }}>
+                  CALL NEXT PATIENT
+                </button>
+              </div>
+            )}
+
             <div className="card" style={{ overflow: 'hidden' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                 <thead>
                   <tr style={{ background: '#f0f9ff', borderBottom: '1px solid var(--border-color)' }}>
+                    {bookingMode === 'token' && <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Token #</th>}
                     <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{t('dashboard.thName')}</th>
                     <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{t('dashboard.thPhone')}</th>
-                    <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{t('dashboard.thTime')}</th>
+                    {bookingMode !== 'token' && <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{t('dashboard.thTime')}</th>}
                     <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{t('dashboard.thStatus')}</th>
                     <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.5px', textAlign: 'right' }}>{t('dashboard.thActions')}</th>
                   </tr>
@@ -382,11 +446,16 @@ const Dashboard = () => {
                 <tbody>
                   {todayAppointments.length === 0 ? (
                     <tr>
-                      <td colSpan="5" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-secondary)' }}>No appointments today.</td>
+                    <td colSpan={bookingMode === 'token' ? "5" : "5"} style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-secondary)' }}>No appointments today.</td>
                     </tr>
                   ) : (
                     todayAppointments.map((apt, index) => (
                       <tr key={apt.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                        {bookingMode === 'token' && (
+                          <td style={{ padding: '1.25rem 1.5rem', color: 'var(--v0-blue)', fontSize: '1.2rem', fontWeight: 800 }}>
+                            #{apt.token_number || '-'}
+                          </td>
+                        )}
                         <td style={{ padding: '1.25rem 1.5rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
                           <div style={{ background: 'var(--v0-blue-light)', color: 'var(--v0-blue)', padding: '0.5rem', borderRadius: '50%' }}>
                             <User size={20} />
@@ -397,7 +466,9 @@ const Dashboard = () => {
                           </div>
                         </td>
                         <td style={{ padding: '1.25rem 1.5rem', color: 'var(--text-main)', fontSize: '0.9rem', fontWeight: 500 }}>{apt.phone_number}</td>
-                        <td style={{ padding: '1.25rem 1.5rem', color: 'var(--text-main)', fontSize: '0.9rem', fontWeight: 600 }}>{new Date(apt.appointment_time).toLocaleTimeString([], {hour: 'numeric', minute:'2-digit'})}</td>
+                        {bookingMode !== 'token' && (
+                          <td style={{ padding: '1.25rem 1.5rem', color: 'var(--text-main)', fontSize: '0.9rem', fontWeight: 600 }}>{new Date(apt.appointment_time).toLocaleTimeString([], {hour: 'numeric', minute:'2-digit'})}</td>
+                        )}
                         <td style={{ padding: '1.25rem 1.5rem' }}>
                           {renderBadge(apt.status)}
                         </td>
@@ -597,14 +668,18 @@ const Dashboard = () => {
                   placeholder="10-digit phone number (e.g. 5551234567)" 
                 />
               </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem', color: 'var(--text-main)' }}>{t('dashboard.modalDate')}</label>
-                <input type="date" required className="form-input" value={newDate} onChange={(e) => setNewDate(e.target.value)} />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem', color: 'var(--text-main)' }}>{t('dashboard.modalTime')}</label>
-                <input type="time" required className="form-input" value={newTime} onChange={(e) => setNewTime(e.target.value)} />
-              </div>
+              {bookingMode === 'scheduled' && (
+                <>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem', color: 'var(--text-main)' }}>{t('dashboard.modalDate')}</label>
+                    <input type="date" required className="form-input" value={newDate} onChange={(e) => setNewDate(e.target.value)} />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem', color: 'var(--text-main)' }}>{t('dashboard.modalTime')}</label>
+                    <input type="time" required className="form-input" value={newTime} onChange={(e) => setNewTime(e.target.value)} />
+                  </div>
+                </>
+              )}
               
               <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
                 <button type="button" onClick={() => setIsModalOpen(false)} className="btn-v0-outline" style={{ flex: 1, padding: '0.65rem', borderRadius: '6px' }}>{t('dashboard.modalBtnCancel')}</button>

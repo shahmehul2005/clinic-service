@@ -44,7 +44,7 @@ def get_patient_clinic_context(phone_number: str):
     Args:
         phone_number (str): The patient's WhatsApp number.
     Returns:
-        tuple: (clinic_id, clinic_name) or (None, None) if new patient.
+        tuple: (clinic_id, clinic_name, booking_mode) or (None, None, None) if new patient.
     """
     try:
         response = supabase.table("appointments") \
@@ -55,18 +55,23 @@ def get_patient_clinic_context(phone_number: str):
             .execute()
         if response.data:
             clinic_id = response.data[0]["clinic_id"]
-            clinic_resp = supabase.table("clinics").select("business_name").eq("id", clinic_id).execute()
-            clinic_name = clinic_resp.data[0]["business_name"] if clinic_resp.data else "Unknown Clinic"
-            return clinic_id, clinic_name
+            clinic_resp = supabase.table("clinics").select("business_name, booking_mode").eq("id", clinic_id).execute()
+            if clinic_resp.data:
+                clinic_name = clinic_resp.data[0]["business_name"]
+                booking_mode = clinic_resp.data[0].get("booking_mode") or "scheduled"
+            else:
+                clinic_name = "Unknown Clinic"
+                booking_mode = "scheduled"
+            return clinic_id, clinic_name, booking_mode
     except Exception as e:
         print(f"Error looking up patient clinic history: {e}")
-    return None, None
+    return None, None, None
 
 def get_all_clinics() -> list:
     """Retrieves all active registered clinics from the database."""
     try:
         response = supabase.table("clinics") \
-            .select("id, business_name, trial_end_date") \
+            .select("id, business_name, trial_end_date, booking_mode") \
             .execute()
         if response.data:
             now = datetime.now()
@@ -256,6 +261,49 @@ def book_slot(clinic_id: str, phone_number: str, date_str: str, time_str: str, p
             return {"status": "error", "message": "CRITICAL: Slot taken. Apologize and offer another time."}
         return {"status": "error", "message": f"Database error: {error_msg}"}
 
+def generate_token(clinic_id: str, phone_number: str, patient_name: str = "Unknown") -> dict:
+    """Generates a queue token for clinics in token mode."""
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    try:
+        # Get current max token for today
+        response = supabase.table("appointments") \
+            .select("token_number") \
+            .eq("clinic_id", clinic_id) \
+            .gte("appointment_time", f"{today_str} 00:00:00") \
+            .lte("appointment_time", f"{today_str} 23:59:59") \
+            .not_("token_number", "is", "null") \
+            .execute()
+            
+        next_token = 1
+        if response.data:
+            tokens = [r["token_number"] for r in response.data if r["token_number"] is not None]
+            if tokens:
+                next_token = max(tokens) + 1
+                
+        # Get currently serving token
+        clinic_resp = supabase.table("clinics").select("current_serving_token").eq("id", clinic_id).execute()
+        current_serving = clinic_resp.data[0].get("current_serving_token", 0) if clinic_resp.data else 0
+                
+        # Insert appointment with token
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        supabase.table("appointments").insert({
+            "clinic_id": clinic_id,
+            "phone_number": phone_number,
+            "patient_name": patient_name,
+            "appointment_time": timestamp,
+            "status": "booked",
+            "token_number": next_token
+        }).execute()
+        
+        people_ahead = max(0, next_token - current_serving - 1)
+        
+        return {
+            "status": "success",
+            "message": f"Successfully generated Token #{next_token}. There are {people_ahead} people ahead of them in the queue. Tell this to the patient."
+        }
+    except Exception as e:
+        return {"status": "error", "error_message": str(e)}
+
 # 3. Initialize the Groq Client
 client = Groq() # automatically looks for GROQ_API_KEY in env
 
@@ -267,10 +315,11 @@ instruction = (
     "- Once they choose, speak entirely in that language for the rest of the conversation.\n"
     "- CRITICAL RULE FOR HINDI: If the user speaks Hindi, you MUST reply ONLY in pure Devanagari script (e.g. नमस्ते). NEVER use Hinglish (English letters for Hindi words).\n\n"
     "CLINIC ROUTING RULES:\n"
-    "1. Check the [Context] injected at the start of the prompt.\n"
-    "2. If `clinic_id` is present, the patient has a history with this clinic. Acknowledge this, check availability for that clinic using `check_availability`, and guide them to confirm a slot. Do NOT ask them which clinic they want to visit.\n"
-    "3. If `IS_FIRST_TIME=True` or `clinic_id` is missing, present the list of available clinic NAMES and politely ask the patient to choose. CRITICAL: NEVER show the Clinic ID (the long string of letters/numbers) to the patient. Keep the IDs hidden for your internal use only.\n"
-    "4. Once a clinic is identified, ask for their preferred date/time and name. Then call `book_slot` to save the appointment.\n\n"
+    "1. Check the [Context] injected at the start of the prompt for `booking_mode`.\n"
+    "2. If `clinic_id` is present, the patient has a history with this clinic. Acknowledge this. Do NOT ask them which clinic they want to visit.\n"
+    "3. If `IS_FIRST_TIME=True` or `clinic_id` is missing, present the list of available clinic NAMES and ask the patient to choose. NEVER show the Clinic ID.\n"
+    "4. IF booking_mode='scheduled': Ask for their preferred date/time and name. Use `check_availability` to find slots, then call `book_slot` to save the appointment.\n"
+    "5. IF booking_mode='token': The clinic operates on a live Token System. Do NOT ask for a date or time (it is always for today). Just ask for the patient's name, then call `generate_token` to put them in the queue.\n\n"
     "OFF-TOPIC PREVENTION:\n"
     "- If the user asks ANY question unrelated to clinic appointments (e.g., trivia, geography, weather, general knowledge), politely decline and steer the conversation back to booking.\n\n"
     "Keep your WhatsApp messages warm, short, and formatted with spacing for readability."
@@ -307,6 +356,22 @@ groq_tools = [
                     "patient_name": {"type": "string"}
                 },
                 "required": ["clinic_id", "phone_number", "date_str", "time_str", "patient_name"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "generate_token",
+            "description": "Generates a live queue token for clinics operating in token mode.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "clinic_id": {"type": "string"},
+                    "phone_number": {"type": "string"},
+                    "patient_name": {"type": "string"}
+                },
+                "required": ["clinic_id", "phone_number", "patient_name"]
             }
         }
     }
@@ -510,7 +575,7 @@ def process_whatsapp_message(payload: dict):
                             user_message = message_obj["text"]["body"]
                             
                             # Retrieve smart clinic context based on patient booking history
-                            clinic_id, clinic_name = get_patient_clinic_context(user_phone)
+                            clinic_id, clinic_name, booking_mode = get_patient_clinic_context(user_phone)
                             
                             if clinic_id:
                                 if not is_clinic_active(clinic_id):
@@ -518,11 +583,11 @@ def process_whatsapp_message(payload: dict):
                                     return
                                     
                                 # Returning patient - auto route to their clinic
-                                context = f"[Context: clinic_id={clinic_id}, clinic_name='{clinic_name}', phone={user_phone}]"
+                                context = f"[Context: clinic_id={clinic_id}, clinic_name='{clinic_name}', booking_mode='{booking_mode}', phone={user_phone}]"
                             else:
                                 # First time patient - fetch all available clinics to display options
                                 clinics = get_all_clinics()
-                                clinics_str = ", ".join([f"[Name: '{c['business_name']}', Internal_ID: '{c['id']}']" for c in clinics])
+                                clinics_str = ", ".join([f"[Name: '{c['business_name']}', Internal_ID: '{c['id']}', booking_mode: '{c.get('booking_mode', 'scheduled')}']" for c in clinics])
                                 context = f"[Context: phone={user_phone}, IS_FIRST_TIME=True, available_clinics={clinics_str}]"
                                 
                             current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -559,6 +624,8 @@ def process_whatsapp_message(payload: dict):
                                                     result = check_availability(function_args.get("clinic_id"), function_args.get("date_str"))
                                                 elif function_name == "book_slot":
                                                     result = book_slot(function_args.get("clinic_id"), function_args.get("phone_number"), function_args.get("date_str"), function_args.get("time_str"), function_args.get("patient_name", "Unknown"))
+                                                elif function_name == "generate_token":
+                                                    result = generate_token(function_args.get("clinic_id"), function_args.get("phone_number"), function_args.get("patient_name", "Unknown"))
                                                 else:
                                                     result = {"error": "Unknown function"}
                                                     
@@ -577,6 +644,8 @@ def process_whatsapp_message(payload: dict):
                                                 result = check_availability(function_args.get("clinic_id"), function_args.get("date_str"))
                                             elif function_name == "book_slot":
                                                 result = book_slot(function_args.get("clinic_id"), function_args.get("phone_number"), function_args.get("date_str"), function_args.get("time_str"), function_args.get("patient_name", "Unknown"))
+                                            elif function_name == "generate_token":
+                                                result = generate_token(function_args.get("clinic_id"), function_args.get("phone_number"), function_args.get("patient_name", "Unknown"))
                                             else:
                                                 result = {"error": "Unknown function"}
                                                 
