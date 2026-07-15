@@ -201,8 +201,9 @@ def check_availability(clinic_id: str, date_str: str) -> dict:
         
         return {
             "status": "success",
+            "all_available_slots": available_slots,
             "suggested_available_slots": suggested,
-            "instruction": "Offer these exact available slots to the user."
+            "instruction": "DO NOT show the full list to the user. Offer ONLY the 'suggested_available_slots'. But if the user asks for a specific time, check if it exists in 'all_available_slots'."
         }
     except Exception as e:
         return {"status": "error", "error_message": str(e)}
@@ -270,6 +271,8 @@ instruction = (
     "2. If `clinic_id` is present, the patient has a history with this clinic. Acknowledge this, check availability for that clinic using `check_availability`, and guide them to confirm a slot. Do NOT ask them which clinic they want to visit.\n"
     "3. If `IS_FIRST_TIME=True` or `clinic_id` is missing, present the list of available clinic NAMES and politely ask the patient to choose. CRITICAL: NEVER show the Clinic ID (the long string of letters/numbers) to the patient. Keep the IDs hidden for your internal use only.\n"
     "4. Once a clinic is identified, ask for their preferred date/time and name. Then call `book_slot` to save the appointment.\n\n"
+    "OFF-TOPIC PREVENTION:\n"
+    "- If the user asks ANY question unrelated to clinic appointments (e.g., trivia, geography, weather, general knowledge), politely decline and steer the conversation back to booking.\n\n"
     "Keep your WhatsApp messages warm, short, and formatted with spacing for readability."
 )
 
