@@ -698,16 +698,32 @@ def process_whatsapp_message(payload: dict):
                                 
                             try:
                                 while True:
-                                    response = client.chat.completions.create(
-                                        model="llama-3.1-8b-instant",
-                                        messages=chat_sessions[user_phone],
-                                        tools=groq_tools,
-                                        tool_choice="auto",
-                                        temperature=0.4
-                                    )
-                                    
-                                    response_message = response.choices[0].message
-                                    chat_sessions[user_phone].append(response_message)
+                                    try:
+                                        response = client.chat.completions.create(
+                                            model="llama-3.1-8b-instant",
+                                            messages=chat_sessions[user_phone],
+                                            tools=groq_tools,
+                                            tool_choice="auto",
+                                            temperature=0.4
+                                        )
+                                        response_message = response.choices[0].message
+                                        chat_sessions[user_phone].append(response_message)
+                                    except Exception as inner_e:
+                                        err_str = str(inner_e)
+                                        if "tool_use_failed" in err_str and "failed_generation" in err_str:
+                                            match = re.search(r"'failed_generation':\s*'([^']*)'", err_str)
+                                            if match:
+                                                failed_gen = match.group(1)
+                                                class FakeMsg:
+                                                    pass
+                                                response_message = FakeMsg()
+                                                response_message.content = failed_gen
+                                                response_message.tool_calls = None
+                                                chat_sessions[user_phone].append({"role": "assistant", "content": failed_gen})
+                                            else:
+                                                raise inner_e
+                                        else:
+                                            raise inner_e
                                     
                                     # Fallback manual parsing for Llama 3 tool hallucinations
                                     fallback_tool_executed = False
