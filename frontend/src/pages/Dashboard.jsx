@@ -103,16 +103,39 @@ const Dashboard = () => {
   };
 
   const handleCallNext = async () => {
-    const nextToken = currentServingToken + 1;
-    const { error } = await supabase
-      .from('clinics')
-      .update({ current_serving_token: nextToken })
-      .eq('id', clinicId);
-      
-    if (!error) {
-      setCurrentServingToken(nextToken);
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    const response = await fetch(`${apiUrl}/api/queue/call-next`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clinic_id: clinicId, current_token: currentServingToken })
+    });
+    
+    if (response.ok) {
+      setCurrentServingToken(currentServingToken + 1);
+      setAppointments(prev => prev.map(apt => {
+        if (apt.token_number === currentServingToken && new Date(apt.appointment_time).toLocaleDateString() === new Date().toLocaleDateString()) {
+          return { ...apt, status: 'completed' };
+        }
+        return apt;
+      }));
     } else {
-      alert("Failed to update token counter: " + error.message);
+      alert("Failed to update token counter and notify patients.");
+    }
+  };
+
+  const handleCancelToken = async (aptId) => {
+    if (!window.confirm("Are you sure you want to cancel this patient's token?")) return;
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    const response = await fetch(`${apiUrl}/api/queue/cancel-token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clinic_id: clinicId, appointment_id: aptId })
+    });
+    
+    if (response.ok) {
+      setAppointments(prev => prev.map(apt => apt.id === aptId ? { ...apt, status: 'cancelled' } : apt));
+    } else {
+      alert("Failed to cancel token and notify patient.");
     }
   };
 
@@ -180,7 +203,11 @@ const Dashboard = () => {
   const todayAppointments = filteredAppointments.filter(apt => {
     const aptDate = new Date(apt.appointment_time).toLocaleDateString();
     const today = new Date().toLocaleDateString();
-    return aptDate === today;
+    if (aptDate !== today) return false;
+    if (bookingMode === 'token') {
+      return apt.status === 'booked' && (apt.token_number || 0) > currentServingToken;
+    }
+    return true;
   }).sort((a, b) => bookingMode === 'token' ? (a.token_number || 0) - (b.token_number || 0) : new Date(a.appointment_time) - new Date(b.appointment_time));
 
   const upcomingAppointments = filteredAppointments.filter(apt => {
@@ -430,7 +457,7 @@ const Dashboard = () => {
                 <tbody>
                   {todayAppointments.length === 0 ? (
                     <tr>
-                    <td colSpan={bookingMode === 'token' ? "5" : "5"} style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-secondary)' }}>No appointments today.</td>
+                    <td colSpan={bookingMode === 'token' ? "5" : "5"} style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-secondary)' }}>{bookingMode === 'token' ? 'No patients currently waiting in queue.' : 'No appointments today.'}</td>
                     </tr>
                   ) : (
                     todayAppointments.map((apt, index) => (
@@ -457,31 +484,37 @@ const Dashboard = () => {
                           {renderBadge(apt.status)}
                         </td>
                         <td style={{ padding: '1.25rem 1.5rem', textAlign: 'right', height: '76px' }}>
-                          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', alignItems: 'center', height: '100%' }}>
-                            {apt.status === 'booked' && (
-                              <button onClick={() => handleUpdateStatus(apt.id, 'arrived')} className="btn-action btn-v0-primary">
-                                <CheckCircle2 size={16} /> {t('dashboard.actionArrived')}
-                              </button>
-                            )}
-                            {(apt.status === 'booked' || apt.status === 'arrived') && (
-                              <button onClick={() => handleUpdateStatus(apt.id, 'completed')} className="btn-action btn-v0-outline">
-                                <CheckCircle2 size={16} /> {t('dashboard.actionComplete')}
-                              </button>
-                            )}
-                            {apt.status !== 'completed' && apt.status !== 'cancelled' && (
-                              <button onClick={() => handleUpdateStatus(apt.id, 'cancelled')} className="btn-action btn-v0-danger">
-                                <XCircle size={16} /> {t('dashboard.actionCancel')}
-                              </button>
-                            )}
-                            {(apt.status === 'completed' || apt.status === 'cancelled') && (
-                              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{t('dashboard.actionNone')}</span>
-                            )}
-                            
-                            {/* Delete Icon */}
-                            <button onClick={() => handleDeleteAppointment(apt.id)} style={{ padding: '0.5rem', marginLeft: '0.5rem', color: 'var(--text-secondary)' }} title="Delete Record">
-                              <Trash2 size={16} style={{ cursor: 'pointer' }} onMouseOver={(e) => e.currentTarget.style.color = 'var(--v0-red)'} onMouseOut={(e) => e.currentTarget.style.color = 'var(--text-secondary)'} />
+                          {bookingMode === 'token' ? (
+                            <button onClick={() => handleCancelToken(apt.id)} className="btn-action btn-v0-danger">
+                              <XCircle size={16} /> Cancel
                             </button>
-                          </div>
+                          ) : (
+                            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', alignItems: 'center', height: '100%' }}>
+                              {apt.status === 'booked' && (
+                                <button onClick={() => handleUpdateStatus(apt.id, 'arrived')} className="btn-action btn-v0-primary">
+                                  <CheckCircle2 size={16} /> {t('dashboard.actionArrived')}
+                                </button>
+                              )}
+                              {(apt.status === 'booked' || apt.status === 'arrived') && (
+                                <button onClick={() => handleUpdateStatus(apt.id, 'completed')} className="btn-action btn-v0-outline">
+                                  <CheckCircle2 size={16} /> {t('dashboard.actionComplete')}
+                                </button>
+                              )}
+                              {apt.status !== 'completed' && apt.status !== 'cancelled' && (
+                                <button onClick={() => handleUpdateStatus(apt.id, 'cancelled')} className="btn-action btn-v0-danger">
+                                  <XCircle size={16} /> {t('dashboard.actionCancel')}
+                                </button>
+                              )}
+                              {(apt.status === 'completed' || apt.status === 'cancelled') && (
+                                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{t('dashboard.actionNone')}</span>
+                              )}
+                              
+                              {/* Delete Icon */}
+                              <button onClick={() => handleDeleteAppointment(apt.id)} style={{ padding: '0.5rem', marginLeft: '0.5rem', color: 'var(--text-secondary)' }} title="Delete Record">
+                                <Trash2 size={16} style={{ cursor: 'pointer' }} onMouseOver={(e) => e.currentTarget.style.color = 'var(--v0-red)'} onMouseOut={(e) => e.currentTarget.style.color = 'var(--text-secondary)'} />
+                              </button>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     ))

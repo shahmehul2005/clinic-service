@@ -693,6 +693,55 @@ async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):
     except Exception as e:
         print(f"Webhook error: {str(e)}")
         return Response(status_code=200)
+class CallNextRequest(BaseModel):
+    clinic_id: str
+    current_token: int
+
+@app.post("/api/queue/call-next")
+def api_call_next(req: CallNextRequest, bg_tasks: BackgroundTasks):
+    """Marks current as completed, updates counter, and alerts next patients."""
+    try:
+        # 1. Update current to completed and send Thanks
+        resp1 = supabase.table("appointments").select("id, phone_number").eq("clinic_id", req.clinic_id).eq("token_number", req.current_token).order("created_at", desc=True).limit(1).execute()
+        if resp1.data:
+            apt = resp1.data[0]
+            supabase.table("appointments").update({"status": "completed"}).eq("id", apt["id"]).execute()
+            bg_tasks.add_task(send_whatsapp_message, apt["phone_number"], "Thank you for visiting! We hope you feel better soon.")
+            
+        # 2. Update clinics counter
+        new_token = req.current_token + 1
+        supabase.table("clinics").update({"current_serving_token": new_token}).eq("id", req.clinic_id).execute()
+        
+        # 3. Alert 2nd next in queue
+        target_token = new_token + 1
+        resp2 = supabase.table("appointments").select("phone_number").eq("clinic_id", req.clinic_id).eq("token_number", target_token).order("created_at", desc=True).limit(1).execute()
+        if resp2.data:
+            bg_tasks.add_task(send_whatsapp_message, resp2.data[0]["phone_number"], f"Get ready! Your token (#{target_token}) is almost up. Please make sure you are near the clinic.")
+            
+        return {"status": "success", "new_token": new_token}
+    except Exception as e:
+        print("Error in call_next:", e)
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=500, content={"detail": str(e)})
+
+class CancelTokenRequest(BaseModel):
+    clinic_id: str
+    appointment_id: str
+
+@app.post("/api/queue/cancel-token")
+def api_cancel_token(req: CancelTokenRequest, bg_tasks: BackgroundTasks):
+    """Cancels a token and notifies the patient."""
+    try:
+        resp = supabase.table("appointments").select("phone_number, token_number").eq("id", req.appointment_id).execute()
+        if resp.data:
+            apt = resp.data[0]
+            supabase.table("appointments").update({"status": "cancelled"}).eq("id", req.appointment_id).execute()
+            bg_tasks.add_task(send_whatsapp_message, apt["phone_number"], f"Your appointment (Token #{apt.get('token_number', '')}) has been cancelled by the clinic.")
+        return {"status": "success"}
+    except Exception as e:
+        print("Error in cancel_token:", e)
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=500, content={"detail": str(e)})
 
 if __name__ == "__main__":
     import uvicorn
