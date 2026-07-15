@@ -403,6 +403,34 @@ def send_whatsapp_message(to_phone: str, message: str):
     if response.status_code != 200:
         print(f"ERROR sending WhatsApp message: {response.text}")
 
+def send_whatsapp_template(to_phone: str, template_name: str, language_code: str = "en"):
+    """Sends a pre-approved template message via Meta Graph API."""
+    if not META_ACCESS_TOKEN or not META_PHONE_NUMBER_ID:
+        print("WARNING: Meta API keys are missing. Template not sent.")
+        return
+
+    url = f"https://graph.facebook.com/v18.0/{META_PHONE_NUMBER_ID}/messages"
+    headers = {
+        "Authorization": f"Bearer {META_ACCESS_TOKEN}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": to_phone,
+        "type": "template",
+        "template": {
+            "name": template_name,
+            "language": {
+                "code": language_code
+            }
+        }
+    }
+    
+    response = requests.post(url, headers=headers, json=payload)
+    if response.status_code != 200:
+        print(f"ERROR sending WhatsApp template: {response.text}")
+
 # 4. Webhook Handshake (GET) for Meta Verification
 @app.get("/webhook")
 async def verify_webhook(request: Request):
@@ -706,7 +734,7 @@ def api_call_next(req: CallNextRequest, bg_tasks: BackgroundTasks):
         if resp1.data:
             apt = resp1.data[0]
             supabase.table("appointments").update({"status": "completed"}).eq("id", apt["id"]).execute()
-            bg_tasks.add_task(send_whatsapp_message, apt["phone_number"], "Thank you for visiting! We hope you feel better soon.")
+            bg_tasks.add_task(send_whatsapp_template, apt["phone_number"], "visit_thanks")
             
         # 2. Update clinics counter
         new_token = req.current_token + 1
@@ -736,7 +764,7 @@ def api_cancel_token(req: CancelTokenRequest, bg_tasks: BackgroundTasks):
         if resp.data:
             apt = resp.data[0]
             supabase.table("appointments").update({"status": "cancelled"}).eq("id", req.appointment_id).execute()
-            bg_tasks.add_task(send_whatsapp_message, apt["phone_number"], f"Your appointment (Token #{apt.get('token_number', '')}) has been cancelled by the clinic.")
+            bg_tasks.add_task(send_whatsapp_template, apt["phone_number"], "appointment_cancelled")
         return {"status": "success"}
     except Exception as e:
         print("Error in cancel_token:", e)
