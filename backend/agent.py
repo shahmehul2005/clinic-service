@@ -379,7 +379,8 @@ instruction = (
     "CRITICAL TOOL INSTRUCTION: When booking an appointment, you MUST actually execute the tool (`generate_token` or `book_slot`). Do NOT just say 'your appointment is booked' without calling the tool. The system relies on you executing the tool to save it to the database!\n\n"
     
     "OFF-TOPIC PREVENTION:\n"
-    "- If the user asks ANY question unrelated to clinic appointments, politely decline: 'I can only assist with booking appointments. How can I help you schedule a visit today?'\n"
+    "- If the user's message is completely unrelated to clinics or booking, decline: 'I can only assist with booking appointments. How can I help you schedule a visit today?'\n"
+    "- CRITICAL: Do NOT trigger this off-topic message if the user is simply stating a clinic name (e.g. 'Test clinic 3') or answering a question. That IS related to booking!\n"
 )
 
 groq_tools = [
@@ -719,7 +720,9 @@ def process_whatsapp_message(payload: dict):
                                                 response_message = FakeMsg()
                                                 response_message.content = failed_gen
                                                 response_message.tool_calls = None
-                                                chat_sessions[user_phone].append({"role": "assistant", "content": failed_gen})
+                                                # CRITICAL FIX: Do NOT append failed_gen to chat_sessions, it poisons the context!
+                                                # Append a clean generic message instead.
+                                                chat_sessions[user_phone].append({"role": "assistant", "content": "I am executing the tool now."})
                                             else:
                                                 raise inner_e
                                         else:
