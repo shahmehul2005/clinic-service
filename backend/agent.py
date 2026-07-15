@@ -38,13 +38,13 @@ META_CLIENT_SECRET = os.getenv("META_CLIENT_SECRET")
 ADMIN_PIN = os.getenv("ADMIN_PIN", "123456")
 
 # Database Context Helpers
-def get_patient_clinic_context(phone_number: str) -> str:
+def get_patient_clinic_context(phone_number: str):
     """
-    Checks past appointments to find the patient's last visited clinic ID.
+    Checks past appointments to find the patient's last visited clinic.
     Args:
         phone_number (str): The patient's WhatsApp number.
     Returns:
-        str: The clinic UUID or None if new patient.
+        tuple: (clinic_id, clinic_name) or (None, None) if new patient.
     """
     try:
         response = supabase.table("appointments") \
@@ -54,10 +54,13 @@ def get_patient_clinic_context(phone_number: str) -> str:
             .limit(1) \
             .execute()
         if response.data:
-            return response.data[0]["clinic_id"]
+            clinic_id = response.data[0]["clinic_id"]
+            clinic_resp = supabase.table("clinics").select("business_name").eq("id", clinic_id).execute()
+            clinic_name = clinic_resp.data[0]["business_name"] if clinic_resp.data else "Unknown Clinic"
+            return clinic_id, clinic_name
     except Exception as e:
         print(f"Error looking up patient clinic history: {e}")
-    return None
+    return None, None
 
 def get_all_clinics() -> list:
     """Retrieves all active registered clinics from the database."""
@@ -476,7 +479,7 @@ def process_whatsapp_message(payload: dict):
                             user_message = message_obj["text"]["body"]
                             
                             # Retrieve smart clinic context based on patient booking history
-                            clinic_id = get_patient_clinic_context(user_phone)
+                            clinic_id, clinic_name = get_patient_clinic_context(user_phone)
                             
                             if clinic_id:
                                 if not is_clinic_active(clinic_id):
@@ -484,7 +487,7 @@ def process_whatsapp_message(payload: dict):
                                     return
                                     
                                 # Returning patient - auto route to their clinic
-                                context = f"[Context: clinic_id={clinic_id}, phone={user_phone}]"
+                                context = f"[Context: clinic_id={clinic_id}, clinic_name='{clinic_name}', phone={user_phone}]"
                             else:
                                 # First time patient - fetch all available clinics to display options
                                 clinics = get_all_clinics()
