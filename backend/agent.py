@@ -3,7 +3,7 @@ import hmac
 import hashlib
 import requests
 from datetime import datetime, timedelta
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from supabase import create_client, Client
@@ -232,7 +232,8 @@ instruction = (
     "While you can be warm and lightly creative in your greetings, do not deviate into unrelated chatting. Maintain a clear schema for booking.\n\n"
     "LANGUAGE PREFERENCE:\n"
     "- On your very first message, briefly greet the user and ask them to choose their preferred language (e.g., English or Hindi).\n"
-    "- Once they choose, speak entirely in that language for the rest of the conversation.\n\n"
+    "- Once they choose, speak entirely in that language for the rest of the conversation.\n"
+    "- CRITICAL RULE FOR HINDI: If the user speaks Hindi, you MUST reply ONLY in pure Devanagari script (e.g. नमस्ते). NEVER use Hinglish (English letters for Hindi words).\n\n"
     "CLINIC ROUTING RULES:\n"
     "1. Check the [Context] injected at the start of the prompt.\n"
     "2. If `clinic_id` is present, the patient has a history with this clinic. Acknowledge this, check availability for that clinic using `check_availability`, and guide them to confirm a slot. Do NOT ask them which clinic they want to visit.\n"
@@ -452,15 +453,10 @@ async def update_appointment_status(appointment_id: str, req: StatusUpdateReques
         return JSONResponse(status_code=500, content={"detail": str(e)})
 
 # 5. Webhook Ingestion (POST) for WhatsApp Messages (Secured with Signature check)
-@app.post("/webhook")
-async def whatsapp_webhook(request: Request):
-    """Handles incoming WhatsApp messages directly from Meta."""
-    if not await verify_signature(request):
-        return Response(status_code=401, content="Invalid signature validation.")
 
+def process_whatsapp_message(payload: dict):
+    """Background task to process the incoming message without delaying the webhook response."""
     try:
-        payload = await request.json()
-        
         # Meta sends a specific payload structure. We must parse it to find the message.
         if "object" in payload and payload["object"] == "whatsapp_business_account":
             for entry in payload.get("entry", []):
@@ -475,7 +471,7 @@ async def whatsapp_webhook(request: Request):
                         if message_obj.get("type") == "text":
                             # CRITICAL: Strict rate limiting check
                             if not check_and_increment_usage():
-                                return Response(status_code=200) # Return 200 so Meta stops retrying
+                                return
                                 
                             user_message = message_obj["text"]["body"]
                             
@@ -485,7 +481,7 @@ async def whatsapp_webhook(request: Request):
                             if clinic_id:
                                 if not is_clinic_active(clinic_id):
                                     print(f"Ignored message: Clinic {clinic_id} trial expired.")
-                                    return Response(status_code=200)
+                                    return
                                     
                                 # Returning patient - auto route to their clinic
                                 context = f"[Context: clinic_id={clinic_id}, phone={user_phone}]"
@@ -520,7 +516,7 @@ async def whatsapp_webhook(request: Request):
                                     # Fallback manual parsing for Llama 3 tool hallucinations
                                     fallback_tool_executed = False
                                     if not response_message.tool_calls and response_message.content:
-                                        match = re.search(r'<function=(\w+)>(.*?)</function>', response_message.content, re.DOTALL)
+                                        match = re.search(r'[\(<]function=(\w+)>(.*?)</function[\)>]?', response_message.content, re.DOTALL)
                                         if match:
                                             function_name = match.group(1)
                                             try:
@@ -564,7 +560,7 @@ async def whatsapp_webhook(request: Request):
                                         # Final text response
                                         if response_message.content:
                                             # Clean any weird tags just in case before sending to WhatsApp
-                                            clean_text = re.sub(r'<function=.*?</function>', '', response_message.content, flags=re.DOTALL).strip()
+                                            clean_text = re.sub(r'[\(<]function=.*?</function[\)>]?', '', response_message.content, flags=re.DOTALL).strip()
                                             if clean_text:
                                                 send_whatsapp_message(user_phone, clean_text)
                                         break
@@ -575,14 +571,23 @@ async def whatsapp_webhook(request: Request):
                                     send_whatsapp_message(user_phone, "Our AI receptionist is currently experiencing high traffic. Please wait about 1 minute and send your message again!")
                                     print(f"API Rate limit hit for {user_phone}: {error_str}")
                                 else:
-                                    raise api_err
-                            
-            return Response(status_code=200)
-        else:
-            return Response(status_code=404)
+                                    print(f"Agent processing error: {error_str}")
+    except Exception as general_err:
+        print(f"Error in background processing: {general_err}")
+
+@app.post("/webhook")
+async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):
+    """Handles incoming WhatsApp messages directly from Meta."""
+    if not await verify_signature(request):
+        return Response(status_code=401, content="Invalid signature validation.")
+
+    try:
+        payload = await request.json()
+        background_tasks.add_task(process_whatsapp_message, payload)
+        return Response(status_code=200)
     except Exception as e:
-        print(f"Webhook Error: {e}")
-        return Response(status_code=500)
+        print(f"Webhook error: {str(e)}")
+        return Response(status_code=200)
 
 if __name__ == "__main__":
     import uvicorn

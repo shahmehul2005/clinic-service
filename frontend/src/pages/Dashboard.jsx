@@ -401,30 +401,32 @@ const Dashboard = () => {
                         <td style={{ padding: '1.25rem 1.5rem' }}>
                           {renderBadge(apt.status)}
                         </td>
-                        <td style={{ padding: '1.25rem 1.5rem', textAlign: 'right', display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', alignItems: 'center', height: '76px' }}>
-                          {apt.status === 'booked' && (
-                            <button onClick={() => handleUpdateStatus(apt.id, 'arrived')} className="btn-action btn-v0-primary">
-                              <CheckCircle2 size={16} /> {t('dashboard.actionArrived')}
+                        <td style={{ padding: '1.25rem 1.5rem', textAlign: 'right', height: '76px' }}>
+                          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', alignItems: 'center', height: '100%' }}>
+                            {apt.status === 'booked' && (
+                              <button onClick={() => handleUpdateStatus(apt.id, 'arrived')} className="btn-action btn-v0-primary">
+                                <CheckCircle2 size={16} /> {t('dashboard.actionArrived')}
+                              </button>
+                            )}
+                            {(apt.status === 'booked' || apt.status === 'arrived') && (
+                              <button onClick={() => handleUpdateStatus(apt.id, 'completed')} className="btn-action btn-v0-outline">
+                                <CheckCircle2 size={16} /> {t('dashboard.actionComplete')}
+                              </button>
+                            )}
+                            {apt.status !== 'completed' && apt.status !== 'cancelled' && (
+                              <button onClick={() => handleUpdateStatus(apt.id, 'cancelled')} className="btn-action btn-v0-danger">
+                                <XCircle size={16} /> {t('dashboard.actionCancel')}
+                              </button>
+                            )}
+                            {(apt.status === 'completed' || apt.status === 'cancelled') && (
+                              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{t('dashboard.actionNone')}</span>
+                            )}
+                            
+                            {/* Delete Icon */}
+                            <button onClick={() => handleDeleteAppointment(apt.id)} style={{ padding: '0.5rem', marginLeft: '0.5rem', color: 'var(--text-secondary)' }} title="Delete Record">
+                              <Trash2 size={16} style={{ cursor: 'pointer' }} onMouseOver={(e) => e.currentTarget.style.color = 'var(--v0-red)'} onMouseOut={(e) => e.currentTarget.style.color = 'var(--text-secondary)'} />
                             </button>
-                          )}
-                          {(apt.status === 'booked' || apt.status === 'arrived') && (
-                            <button onClick={() => handleUpdateStatus(apt.id, 'completed')} className="btn-action btn-v0-outline">
-                              <CheckCircle2 size={16} /> {t('dashboard.actionComplete')}
-                            </button>
-                          )}
-                          {apt.status !== 'completed' && apt.status !== 'cancelled' && (
-                            <button onClick={() => handleUpdateStatus(apt.id, 'cancelled')} className="btn-action btn-v0-danger">
-                              <XCircle size={16} /> {t('dashboard.actionCancel')}
-                            </button>
-                          )}
-                          {(apt.status === 'completed' || apt.status === 'cancelled') && (
-                            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{t('dashboard.actionNone')}</span>
-                          )}
-                          
-                          {/* Delete Icon */}
-                          <button onClick={() => handleDeleteAppointment(apt.id)} style={{ padding: '0.5rem', marginLeft: '0.5rem', color: 'var(--text-secondary)' }} title="Delete Record">
-                            <Trash2 size={16} style={{ cursor: 'pointer' }} onMouseOver={(e) => e.currentTarget.style.color = 'var(--v0-red)'} onMouseOut={(e) => e.currentTarget.style.color = 'var(--text-secondary)'} />
-                          </button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -486,15 +488,17 @@ const Dashboard = () => {
                         <td style={{ padding: '1.25rem 1.5rem' }}>
                           {renderBadge(apt.status)}
                         </td>
-                        <td style={{ padding: '1.25rem 1.5rem', textAlign: 'right', display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', alignItems: 'center', height: '76px' }}>
-                          {apt.status !== 'completed' && apt.status !== 'cancelled' && (
-                            <button onClick={() => handleUpdateStatus(apt.id, 'cancelled')} className="btn-action btn-v0-danger">
-                              <XCircle size={16} /> {t('dashboard.actionCancel')}
+                        <td style={{ padding: '1.25rem 1.5rem', textAlign: 'right', height: '76px' }}>
+                          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', alignItems: 'center', height: '100%' }}>
+                            {apt.status !== 'completed' && apt.status !== 'cancelled' && (
+                              <button onClick={() => handleUpdateStatus(apt.id, 'cancelled')} className="btn-action btn-v0-danger">
+                                <XCircle size={16} /> {t('dashboard.actionCancel')}
+                              </button>
+                            )}
+                            <button onClick={() => handleDeleteAppointment(apt.id)} style={{ padding: '0.5rem', marginLeft: '0.5rem', color: 'var(--text-secondary)' }} title="Delete Record">
+                              <Trash2 size={16} style={{ cursor: 'pointer' }} onMouseOver={(e) => e.currentTarget.style.color = 'var(--v0-red)'} onMouseOut={(e) => e.currentTarget.style.color = 'var(--text-secondary)'} />
                             </button>
-                          )}
-                          <button onClick={() => handleDeleteAppointment(apt.id)} style={{ padding: '0.5rem', marginLeft: '0.5rem', color: 'var(--text-secondary)' }} title="Delete Record">
-                            <Trash2 size={16} style={{ cursor: 'pointer' }} onMouseOver={(e) => e.currentTarget.style.color = 'var(--v0-red)'} onMouseOut={(e) => e.currentTarget.style.color = 'var(--text-secondary)'} />
-                          </button>
+                          </div>
                         </td>
                       </tr>
                     ))
