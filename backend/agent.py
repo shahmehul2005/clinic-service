@@ -450,7 +450,7 @@ def send_whatsapp_message(to_phone: str, message: str):
     if response.status_code != 200:
         print(f"ERROR sending WhatsApp message: {response.text}")
 
-def send_whatsapp_template(to_phone: str, template_name: str, language_code: str = "en"):
+def send_whatsapp_template(to_phone: str, template_name: str, language_code: str = "en_US"):
     """Sends a pre-approved template message via Meta Graph API."""
     if not META_ACCESS_TOKEN or not META_PHONE_NUMBER_ID:
         print("WARNING: Meta API keys are missing. Template not sent.")
@@ -477,6 +477,12 @@ def send_whatsapp_template(to_phone: str, template_name: str, language_code: str
     response = requests.post(url, headers=headers, json=payload)
     if response.status_code != 200:
         print(f"ERROR sending WhatsApp template: {response.text}")
+        # Fallback to standard text message if the template fails (e.g., due to language mismatch or review status)
+        fallback_msg = "Your appointment has been cancelled. Thank you."
+        if template_name == "visit_thanks":
+            fallback_msg = "Thank you for visiting! We hope you have a great day."
+        print(f"Attempting fallback to text message for {to_phone}...")
+        send_whatsapp_message(to_phone, fallback_msg)
 
 # 4. Webhook Handshake (GET) for Meta Verification
 @app.get("/webhook")
