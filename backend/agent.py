@@ -308,21 +308,18 @@ def generate_token(clinic_id: str, phone_number: str, patient_name: str = "Unkno
 client = Groq() # automatically looks for GROQ_API_KEY in env
 
 instruction = (
-    "You are a professional, friendly clinic receptionist chatbot. You must stay focused on your primary goal: guiding the patient through a flow to book an appointment.\n"
-    "While you can be warm and lightly creative in your greetings, do not deviate into unrelated chatting. Maintain a clear schema for booking.\n\n"
+    "You are a professional, highly efficient clinic receptionist chatbot. Keep all messages MINIMAL and straight to the point (fixing an appointment). Avoid unnecessary conversational fluff.\n"
     "LANGUAGE PREFERENCE:\n"
-    "- On your very first message, briefly greet the user and ask them to choose their preferred language (e.g., English or Hindi).\n"
-    "- Once they choose, speak entirely in that language for the rest of the conversation.\n"
-    "- CRITICAL RULE FOR HINDI: If the user speaks Hindi, you MUST reply ONLY in pure Devanagari script (e.g. नमस्ते). NEVER use Hinglish (English letters for Hindi words).\n\n"
+    "- On your first message, ask the user to choose their preferred language (e.g., English or Hindi).\n"
+    "- CRITICAL RULE FOR HINDI: If the user speaks Hindi, you MUST reply ONLY in pure Devanagari script (e.g. नमस्ते). NEVER use Hinglish.\n\n"
     "CLINIC ROUTING RULES:\n"
-    "1. Check the [Context] injected at the start of the prompt for `booking_mode`.\n"
-    "2. If `clinic_id` is present, the patient has a history with this clinic. Acknowledge this. Do NOT ask them which clinic they want to visit.\n"
-    "3. If `IS_FIRST_TIME=True` or `clinic_id` is missing, present the list of available clinic NAMES and ask the patient to choose. NEVER show the Clinic ID.\n"
-    "4. IF booking_mode='scheduled': Ask for their preferred date/time and name. Use `check_availability` to find slots, then call `book_slot` to save the appointment.\n"
-    "5. IF booking_mode='token': The clinic operates on a live Token System. Do NOT ask for a date or time (it is always for today). Just ask for the patient's name, then call `generate_token` to put them in the queue.\n\n"
+    "1. Check the [Context] injected at the start of the prompt for `booking_mode` and `clinic_id`.\n"
+    "2. If `clinic_id` is present, acknowledge it (e.g. 'Welcome back to [Clinic Name]'). Do NOT ask which clinic they want UNLESS the patient explicitly asks to change clinics.\n"
+    "3. If `IS_FIRST_TIME=True` OR the patient explicitly asks to switch clinics, present the list of available clinic NAMES from the context and ask them to choose. (Never show the internal ID).\n"
+    "4. IF booking_mode='scheduled': Ask for preferred date/time and name. Use `check_availability` to find slots, then call `book_slot`.\n"
+    "5. IF booking_mode='token': The clinic uses a Live Token Queue. Do NOT ask for a date or time (it is always for right now). Just ask for the patient's name, then call `generate_token`. Tell them their exact Token Number and how many people are waiting ahead of them.\n\n"
     "OFF-TOPIC PREVENTION:\n"
-    "- If the user asks ANY question unrelated to clinic appointments (e.g., trivia, geography, weather, general knowledge), politely decline and steer the conversation back to booking.\n\n"
-    "Keep your WhatsApp messages warm, short, and formatted with spacing for readability."
+    "- If the user asks ANY question unrelated to clinic appointments, politely decline with a standard reply: 'I can only assist with booking appointments. How can I help you schedule a visit today?'\n"
 )
 
 groq_tools = [
@@ -613,7 +610,9 @@ def process_whatsapp_message(payload: dict):
                                     return
                                     
                                 # Returning patient - auto route to their clinic
-                                context = f"[Context: clinic_id={clinic_id}, clinic_name='{clinic_name}', booking_mode='{booking_mode}', phone={user_phone}]"
+                                clinics = get_all_clinics()
+                                clinics_str = ", ".join([f"[Name: '{c['business_name']}', Internal_ID: '{c['id']}', booking_mode: '{c.get('booking_mode', 'scheduled')}']" for c in clinics])
+                                context = f"[Context: clinic_id={clinic_id}, clinic_name='{clinic_name}', booking_mode='{booking_mode}', phone={user_phone}, available_clinics={clinics_str}]"
                             else:
                                 # First time patient - fetch all available clinics to display options
                                 clinics = get_all_clinics()
