@@ -425,6 +425,7 @@ class OnboardRequest(BaseModel):
     business_name: str
     admin_email: str
     password: str
+    booking_mode: str = "scheduled"
 
 @app.post("/api/admin/onboard")
 async def onboard_clinic(req: OnboardRequest):
@@ -450,7 +451,8 @@ async def onboard_clinic(req: OnboardRequest):
             "meta_phone_number_id": META_PHONE_NUMBER_ID or "NOT_SET",
             "admin_email": req.admin_email,
             "admin_auth_uid": user_id,
-            "trial_end_date": trial_end
+            "trial_end_date": trial_end,
+            "booking_mode": req.booking_mode
         }).execute()
         
         clinic_id = clinic_response.data[0]["id"]

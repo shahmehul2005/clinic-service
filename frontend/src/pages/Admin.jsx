@@ -6,6 +6,7 @@ const Admin = () => {
   const [businessName, setBusinessName] = useState('');
   const [adminEmail, setAdminEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [bookingMode, setBookingMode] = useState('scheduled');
   
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState(null);
@@ -34,7 +35,8 @@ const Admin = () => {
           pin,
           business_name: businessName,
           admin_email: adminEmail,
-          password
+          password,
+          booking_mode: bookingMode
         }),
       });
 
@@ -45,6 +47,7 @@ const Admin = () => {
         setBusinessName('');
         setAdminEmail('');
         setPassword('');
+        setBookingMode('scheduled');
       } else {
         setError(data.detail || data || "Failed to onboard clinic.");
       }
@@ -171,6 +174,21 @@ const Admin = () => {
               placeholder="Temp123!"
             />
             <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>Must be at least 6 characters.</p>
+          </div>
+
+          <div>
+            <label className="form-label" htmlFor="bookingMode">Clinic Workflow Type</label>
+            <select 
+              id="bookingMode"
+              className="form-input"
+              value={bookingMode}
+              onChange={(e) => setBookingMode(e.target.value)}
+              required
+            >
+              <option value="scheduled">Standard Time-Scheduled Appointments</option>
+              <option value="token">Live Token Queue (First-Come First-Served)</option>
+            </select>
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>This permanently locks the UI into this workflow.</p>
           </div>
 
           <button type="submit" disabled={loading} className="btn btn-primary" style={{ marginTop: '0.5rem', padding: '0.75rem', background: 'var(--v0-blue)', border: 'none', color: 'white', borderRadius: '8px', cursor: 'pointer' }}>

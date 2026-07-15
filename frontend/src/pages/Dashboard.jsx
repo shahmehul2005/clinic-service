@@ -102,22 +102,6 @@ const Dashboard = () => {
     }
   };
 
-  const handleToggleMode = async () => {
-    const newMode = bookingMode === 'scheduled' ? 'token' : 'scheduled';
-    if (!window.confirm(`Are you sure you want to switch to ${newMode} mode?`)) return;
-    
-    const { error } = await supabase
-      .from('clinics')
-      .update({ booking_mode: newMode })
-      .eq('id', clinicId);
-      
-    if (!error) {
-      setBookingMode(newMode);
-    } else {
-      alert("Failed to switch modes: " + error.message);
-    }
-  };
-
   const handleCallNext = async () => {
     const nextToken = currentServingToken + 1;
     const { error } = await supabase
@@ -344,9 +328,6 @@ const Dashboard = () => {
             </p>
           </div>
           <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-            <button onClick={handleToggleMode} className="btn-v0-outline" style={{ padding: '0.75rem 1.5rem', fontSize: '1rem', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Clock size={16} /> Mode: {bookingMode === 'token' ? 'Token Queue' : 'Scheduled'}
-            </button>
             <button onClick={() => i18n.changeLanguage(i18n.language === 'en' ? 'hi' : 'en')} className="btn-v0-outline" style={{ padding: '0.75rem 1.5rem', fontSize: '1rem', borderRadius: '8px' }}>
               {i18n.language === 'en' ? 'हिंदी' : 'English'}
             </button>
@@ -421,8 +402,11 @@ const Dashboard = () => {
               <div style={{ marginBottom: '3rem', background: 'white', borderRadius: '16px', padding: '2.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}>
                 <div>
                   <h3 style={{ color: 'var(--text-secondary)', fontSize: '1.25rem', fontWeight: 600, marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '1px' }}>Live Token Queue</h3>
-                  <div style={{ fontSize: '3.5rem', fontWeight: 800, color: 'var(--text-main)', lineHeight: 1 }}>
+                  <div style={{ fontSize: '3.5rem', fontWeight: 800, color: 'var(--text-main)', lineHeight: 1, marginBottom: '0.5rem' }}>
                     CURRENTLY SERVING: <span style={{ color: 'var(--v0-blue)' }}>#{currentServingToken}</span>
+                  </div>
+                  <div style={{ fontSize: '1rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
+                    Last Issued Token: #{todayAppointments.reduce((max, apt) => Math.max(max, apt.token_number || 0), 0)} • Patients Waiting: {Math.max(0, todayAppointments.reduce((max, apt) => Math.max(max, apt.token_number || 0), 0) - currentServingToken)}
                   </div>
                 </div>
                 <button onClick={handleCallNext} style={{ background: 'var(--v0-blue)', color: 'white', border: 'none', padding: '1.5rem 3rem', borderRadius: '12px', fontSize: '1.5rem', fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 14px 0 rgba(10, 102, 194, 0.39)', transition: 'all 0.2s' }}>
