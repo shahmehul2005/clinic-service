@@ -375,9 +375,11 @@ instruction = (
     "WORKFLOW & ROUTING:\n"
     "Step 1 (Identify Clinic): Check [Context] for `clinic_id`.\n"
     "- If `IS_FIRST_TIME=True` OR the patient asks to change clinics: Ask them to choose a clinic from the `available_clinics` list. Do NOT show internal IDs.\n"
-    "- If they already have a `clinic_id`, acknowledge it (e.g. 'Welcome back to [Clinic Name]').\n"
+    "- If they already have a `clinic_id` and didn't ask to change: Acknowledge it (e.g. 'Welcome back to [Clinic Name]').\n"
     
-    "Step 2 (Apply Specific Clinic Workflow): Once the clinic is determined, check its `booking_mode` from the context or the list, and strictly follow the matching workflow below:\n\n"
+    "Step 2 (Apply Specific Clinic Workflow): Determine the active clinic's `booking_mode`.\n"
+    "- CRITICAL: If the patient just chose a clinic from the `available_clinics` list, you MUST use the `booking_mode` specified in that list! IGNORE the `booking_mode` in the main Context (that is their old clinic).\n"
+    "- Follow the matching workflow below based on the active clinic's `booking_mode`:\n\n"
     
     "WORKFLOW A: SCHEDULED CLINICS (`booking_mode='scheduled'`)\n"
     "1. Ask for their preferred date, time, and name.\n"
