@@ -44,7 +44,7 @@ def get_patient_clinic_context(phone_number: str):
     Args:
         phone_number (str): The patient's WhatsApp number.
     Returns:
-        tuple: (clinic_id, clinic_name, booking_mode) or (None, None, None) if new patient.
+        tuple: (clinic_id, clinic_name, booking_mode, extra_context) or (None, None, None, None) if new patient.
     """
     try:
         response = supabase.table("appointments") \
@@ -55,17 +55,31 @@ def get_patient_clinic_context(phone_number: str):
             .execute()
         if response.data:
             clinic_id = response.data[0]["clinic_id"]
-            clinic_resp = supabase.table("clinics").select("business_name, booking_mode").eq("id", clinic_id).execute()
+            clinic_resp = supabase.table("clinics").select("business_name, booking_mode, closed_date, working_days, working_hours, current_serving_token").eq("id", clinic_id).execute()
             if clinic_resp.data:
-                clinic_name = clinic_resp.data[0]["business_name"]
-                booking_mode = clinic_resp.data[0].get("booking_mode") or "scheduled"
+                cdata = clinic_resp.data[0]
+                clinic_name = cdata["business_name"]
+                booking_mode = cdata.get("booking_mode") or "scheduled"
+                
+                extra_context = {}
+                if cdata.get("closed_date"): extra_context["closed_date"] = cdata["closed_date"]
+                if cdata.get("working_days"): extra_context["working_days"] = cdata["working_days"]
+                if cdata.get("working_hours"): extra_context["working_hours"] = cdata["working_hours"]
+                
+                if booking_mode == "token":
+                    today_str = datetime.now().strftime("%Y-%m-%d")
+                    t_resp = supabase.table("appointments").select("token_number").eq("clinic_id", clinic_id).gte("appointment_time", f"{today_str} 00:00:00").lte("appointment_time", f"{today_str} 23:59:59").not_("token_number", "is", "null").execute()
+                    max_t = max([r["token_number"] for r in t_resp.data if r["token_number"] is not None] or [0]) if t_resp.data else 0
+                    cur_t = cdata.get("current_serving_token") or 0
+                    extra_context["waiting_queue"] = max(0, max_t - cur_t)
             else:
                 clinic_name = "Unknown Clinic"
                 booking_mode = "scheduled"
-            return clinic_id, clinic_name, booking_mode
+                extra_context = {}
+            return clinic_id, clinic_name, booking_mode, extra_context
     except Exception as e:
         print(f"Error looking up patient clinic history: {e}")
-    return None, None, None
+    return None, None, None, None
 
 def get_all_clinics() -> list:
     """Retrieves all active registered clinics from the database."""
@@ -226,13 +240,33 @@ def book_slot(clinic_id: str, phone_number: str, date_str: str, time_str: str, p
     timestamp = f"{date_str} {time_str}"
     
     try:
+        # Fetch clinic settings
+        clinic_resp = supabase.table("clinics").select("closed_date, working_days, working_hours").eq("id", clinic_id).execute()
+        if clinic_resp.data:
+            cdata = clinic_resp.data[0]
+            if cdata.get("closed_date") == date_str:
+                 return {"status": "error", "message": f"CRITICAL: The clinic is closed on {date_str}. Offer another date."}
+            
+            target_dt = datetime.strptime(timestamp, "%Y-%m-%d %H:%M")
+            day_name = target_dt.strftime("%A")
+            
+            working_days = cdata.get("working_days") or []
+            if working_days and day_name not in working_days:
+                 return {"status": "error", "message": f"CRITICAL: The clinic is closed on {day_name}s. Offer another date."}
+                 
+            working_hours = cdata.get("working_hours") or {}
+            if working_hours:
+                start_time = datetime.strptime(working_hours.get("start", "00:00"), "%H:%M").time()
+                end_time = datetime.strptime(working_hours.get("end", "23:59"), "%H:%M").time()
+                if not (start_time <= target_dt.time() <= end_time):
+                    return {"status": "error", "message": f"CRITICAL: Requested time is outside working hours ({start_time} to {end_time}). Offer another time."}
+
         # 1. Check if time is in the past
         target_dt = datetime.strptime(timestamp, "%Y-%m-%d %H:%M")
         if target_dt < datetime.now():
             return {"status": "error", "message": "CRITICAL: Cannot book appointments in the past. Ask the user for a future date/time."}
             
         # 2. Check for 10-minute conflicts
-        target_dt = datetime.strptime(timestamp, "%Y-%m-%d %H:%M")
         start_window = (target_dt - timedelta(minutes=9)).strftime("%Y-%m-%d %H:%M:%S")
         end_window = (target_dt + timedelta(minutes=9)).strftime("%Y-%m-%d %H:%M:%S")
         
@@ -280,9 +314,25 @@ def generate_token(clinic_id: str, phone_number: str, patient_name: str = "Unkno
             if tokens:
                 next_token = max(tokens) + 1
                 
-        # Get currently serving token
-        clinic_resp = supabase.table("clinics").select("current_serving_token").eq("id", clinic_id).execute()
-        current_serving = clinic_resp.data[0].get("current_serving_token", 0) if clinic_resp.data else 0
+        # Get currently serving token and clinic settings
+        clinic_resp = supabase.table("clinics").select("current_serving_token, closed_date, working_days, working_hours").eq("id", clinic_id).execute()
+        cdata = clinic_resp.data[0] if clinic_resp.data else {}
+        current_serving = cdata.get("current_serving_token", 0)
+        
+        if cdata.get("closed_date") == today_str:
+            return {"status": "error", "message": "CRITICAL: The clinic is closed for today. Tell the patient no more tokens are being issued today."}
+        
+        now = datetime.now()
+        day_name = now.strftime("%A")
+        working_days = cdata.get("working_days") or []
+        working_hours = cdata.get("working_hours") or {}
+        if working_days and day_name not in working_days:
+            return {"status": "error", "message": f"CRITICAL: The clinic is closed today ({day_name}). Tell the patient."}
+        if working_hours:
+            start_time = datetime.strptime(working_hours.get("start", "00:00"), "%H:%M").time()
+            end_time = datetime.strptime(working_hours.get("end", "23:59"), "%H:%M").time()
+            if not (start_time <= now.time() <= end_time):
+                return {"status": "error", "message": f"CRITICAL: The clinic is closed right now. Working hours are {start_time} to {end_time}. Tell the patient."}
                 
         # Insert appointment with token
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -317,7 +367,7 @@ instruction = (
     "2. If `clinic_id` is present, acknowledge it (e.g. 'Welcome back to [Clinic Name]'). Do NOT ask which clinic they want UNLESS the patient explicitly asks to change clinics.\n"
     "3. If `IS_FIRST_TIME=True` OR the patient explicitly asks to switch clinics, present the list of available clinic NAMES from the context and ask them to choose. (Never show the internal ID).\n"
     "4. IF booking_mode='scheduled': Ask for preferred date/time and name. Use `check_availability` to find slots, then call `book_slot`.\n"
-    "5. IF booking_mode='token': The clinic uses a Live Token Queue. Do NOT ask for a date or time (it is always for right now). Just ask for the patient's name, then call `generate_token`. Tell them their exact Token Number and how many people are waiting ahead of them.\n\n"
+    "5. IF booking_mode='token': The clinic uses a Live Token Queue. If `waiting_queue` is in the Context, IMMEDIATELY tell the patient how many people are currently waiting before they even book. Do NOT ask for a date or time. Just ask for the patient's name, then call `generate_token`.\n\n"
     "OFF-TOPIC PREVENTION:\n"
     "- If the user asks ANY question unrelated to clinic appointments, politely decline with a standard reply: 'I can only assist with booking appointments. How can I help you schedule a visit today?'\n"
 )
@@ -451,6 +501,8 @@ class OnboardRequest(BaseModel):
     admin_email: str
     password: str
     booking_mode: str = "scheduled"
+    working_days: list = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    working_hours: dict = {"start": "09:00", "end": "21:00"}
 
 @app.post("/api/admin/onboard")
 async def onboard_clinic(req: OnboardRequest):
@@ -477,7 +529,9 @@ async def onboard_clinic(req: OnboardRequest):
             "admin_email": req.admin_email,
             "admin_auth_uid": user_id,
             "trial_end_date": trial_end,
-            "booking_mode": req.booking_mode
+            "booking_mode": req.booking_mode,
+            "working_days": req.working_days,
+            "working_hours": req.working_hours
         }).execute()
         
         clinic_id = clinic_response.data[0]["id"]
@@ -767,6 +821,38 @@ def api_cancel_token(req: CancelTokenRequest, bg_tasks: BackgroundTasks):
         return {"status": "success"}
     except Exception as e:
         print("Error in cancel_token:", e)
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=500, content={"detail": str(e)})
+
+class CloseDayRequest(BaseModel):
+    clinic_id: str
+
+@app.post("/api/queue/close-day")
+def api_close_day(req: CloseDayRequest, bg_tasks: BackgroundTasks):
+    """Closes the clinic for the rest of the day and cancels remaining booked appointments."""
+    try:
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        
+        # 1. Set closed_date
+        supabase.table("clinics").update({"closed_date": today_str}).eq("id", req.clinic_id).execute()
+        
+        # 2. Find all remaining booked appointments for today
+        resp = supabase.table("appointments") \
+            .select("id, phone_number") \
+            .eq("clinic_id", req.clinic_id) \
+            .eq("status", "booked") \
+            .gte("appointment_time", f"{today_str} 00:00:00") \
+            .lte("appointment_time", f"{today_str} 23:59:59") \
+            .execute()
+            
+        if resp.data:
+            for apt in resp.data:
+                supabase.table("appointments").update({"status": "cancelled"}).eq("id", apt["id"]).execute()
+                bg_tasks.add_task(send_whatsapp_template, apt["phone_number"], "appointment_cancelled")
+                
+        return {"status": "success", "message": f"Closed clinic and cancelled {len(resp.data) if resp.data else 0} appointments."}
+    except Exception as e:
+        print("Error in close_day:", e)
         from fastapi.responses import JSONResponse
         return JSONResponse(status_code=500, content={"detail": str(e)})
 

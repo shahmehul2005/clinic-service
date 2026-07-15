@@ -107,8 +107,10 @@
     "modalBtnCancel": "Cancel",
     "modalBtnBook": "Book Slot",
     "patientsViewTitle": "Patient Directory",
-    "patientsViewSub": "A complete list of everyone who has visited the clinic.",
+    "patientsViewSub": "A complete list of all patients who have visited the clinic.",
     "thTotalVisits": "Total Visits",
-    "thLastVisit": "Last Visit Date"
+    "thLastVisit": "Last Visit Date",
+    "noPatientsQueue": "No patients currently waiting in queue.",
+    "closeDayBtn": "Close Clinic for Today"
   }
 }

@@ -7,6 +7,8 @@ const Admin = () => {
   const [adminEmail, setAdminEmail] = useState('');
   const [password, setPassword] = useState('');
   const [bookingMode, setBookingMode] = useState('scheduled');
+  const [startTime, setStartTime] = useState('09:00');
+  const [endTime, setEndTime] = useState('21:00');
   
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState(null);
@@ -36,7 +38,8 @@ const Admin = () => {
           business_name: businessName,
           admin_email: adminEmail,
           password,
-          booking_mode: bookingMode
+          booking_mode: bookingMode,
+          working_hours: { start: startTime, end: endTime }
         }),
       });
 
@@ -189,6 +192,31 @@ const Admin = () => {
               <option value="token">Live Token Queue (First-Come First-Served)</option>
             </select>
             <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>This permanently locks the UI into this workflow.</p>
+          </div>
+
+          <div style={{ display: 'flex', gap: '1rem' }}>
+            <div style={{ flex: 1 }}>
+              <label className="form-label" htmlFor="startTime">Opening Time</label>
+              <input 
+                id="startTime"
+                type="time" 
+                className="form-input"
+                value={startTime}
+                onChange={(e) => setStartTime(e.target.value)}
+                required 
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label className="form-label" htmlFor="endTime">Closing Time</label>
+              <input 
+                id="endTime"
+                type="time" 
+                className="form-input"
+                value={endTime}
+                onChange={(e) => setEndTime(e.target.value)}
+                required 
+              />
+            </div>
           </div>
 
           <button type="submit" disabled={loading} className="btn btn-primary" style={{ marginTop: '0.5rem', padding: '0.75rem', background: 'var(--v0-blue)', border: 'none', color: 'white', borderRadius: '8px', cursor: 'pointer' }}>

@@ -109,6 +109,8 @@
     "patientsViewTitle": "मरीज निर्देशिका",
     "patientsViewSub": "क्लिनिक में आने वाले सभी मरीजों की पूरी सूची।",
     "thTotalVisits": "कुल यात्राएँ",
-    "thLastVisit": "अंतिम यात्रा तिथि"
+    "thLastVisit": "अंतिम यात्रा तिथि",
+    "noPatientsQueue": "कतार में अभी कोई मरीज प्रतीक्षा नहीं कर रहा है।",
+    "closeDayBtn": "आज के लिए क्लिनिक बंद करें"
   }
 }

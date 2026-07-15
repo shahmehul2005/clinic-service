@@ -139,6 +139,23 @@ const Dashboard = () => {
     }
   };
 
+  const handleCloseDay = async () => {
+    if (!window.confirm("Are you sure you want to close the clinic for today? This will cancel all remaining appointments for today!")) return;
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    const response = await fetch(`${apiUrl}/api/queue/close-day`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clinic_id: clinicId })
+    });
+    
+    if (response.ok) {
+      alert("Clinic closed for today. Remaining appointments cancelled.");
+      fetchAppointments();
+    } else {
+      alert("Failed to close clinic for today.");
+    }
+  };
+
   const handleAddAppointment = async (e) => {
     e.preventDefault();
     setSubmitError('');
@@ -407,21 +424,25 @@ const Dashboard = () => {
             </div>
 
             {/* Data Table Area */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '1.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
               <div>
                 <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-main)' }}>{t('dashboard.liveQueue')}</h2>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>{t('dashboard.liveQueueSub')}</p>
               </div>
-              <div style={{ position: 'relative', width: '300px' }}>
-                <Search size={18} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
-                <input 
-                  type="text" 
-                  placeholder={t('dashboard.searchPh')} 
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="form-input" 
-                  style={{ paddingLeft: '2.5rem', borderRadius: '999px' }} 
-                />
+              <div style={{ display: 'flex', gap: '1rem' }}>
+                <button onClick={handleCloseDay} className="btn-v0-danger" style={{ padding: '0.75rem 1.25rem', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.5rem', borderRadius: '8px' }}>
+                  <XCircle size={18} /> {t('dashboard.closeDayBtn')}
+                </button>
+                <div style={{ position: 'relative', width: '300px' }}>
+                  <Search size={18} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
+                  <input 
+                    type="text" 
+                    placeholder={t('dashboard.searchPh')} 
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    style={{ width: '100%', padding: '0.75rem 1rem 0.75rem 2.75rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-main)', color: 'var(--text-main)', outline: 'none', transition: 'border-color 0.2s' }}
+                  />
+                </div>
               </div>
             </div>
 
@@ -457,7 +478,7 @@ const Dashboard = () => {
                 <tbody>
                   {todayAppointments.length === 0 ? (
                     <tr>
-                    <td colSpan={bookingMode === 'token' ? "5" : "5"} style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-secondary)' }}>{bookingMode === 'token' ? 'No patients currently waiting in queue.' : 'No appointments today.'}</td>
+                    <td colSpan={bookingMode === 'token' ? "5" : "5"} style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-secondary)' }}>{bookingMode === 'token' ? t('dashboard.noPatientsQueue') : t('dashboard.noPatients')}</td>
                     </tr>
                   ) : (
                     todayAppointments.map((apt, index) => (
@@ -486,7 +507,7 @@ const Dashboard = () => {
                         <td style={{ padding: '1.25rem 1.5rem', textAlign: 'right', height: '76px' }}>
                           {bookingMode === 'token' ? (
                             <button onClick={() => handleCancelToken(apt.id)} className="btn-action btn-v0-danger">
-                              <XCircle size={16} /> Cancel
+                              <XCircle size={16} /> {t('dashboard.actionCancel')}
                             </button>
                           ) : (
                             <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', alignItems: 'center', height: '100%' }}>
