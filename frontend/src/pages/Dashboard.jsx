@@ -64,6 +64,17 @@ const Dashboard = () => {
     
     fetchClinicData();
     fetchAppointments();
+
+    const channel = supabase
+      .channel('custom-all-channel')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments', filter: `clinic_id=eq.${clinicId}` }, (payload) => {
+        fetchAppointments();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [clinicId]);
 
   const handleUpdateStatus = async (id, newStatus) => {

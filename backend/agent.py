@@ -241,9 +241,12 @@ def book_slot(clinic_id: str, phone_number: str, date_str: str, time_str: str, p
     
     try:
         # Fetch clinic settings
-        clinic_resp = supabase.table("clinics").select("closed_date, working_days, working_hours").eq("id", clinic_id).execute()
+        clinic_resp = supabase.table("clinics").select("closed_date, working_days, working_hours, booking_mode").eq("id", clinic_id).execute()
         if clinic_resp.data:
             cdata = clinic_resp.data[0]
+            if cdata.get("booking_mode") == "token":
+                return {"status": "error", "message": "CRITICAL: This clinic operates on a Token System. You MUST call `generate_token` instead of `book_slot`. Do NOT ask for date or time, just call `generate_token` immediately!"}
+                
             if cdata.get("closed_date") == date_str:
                  return {"status": "error", "message": f"CRITICAL: The clinic is closed on {date_str}. Offer another date."}
             
@@ -315,8 +318,12 @@ def generate_token(clinic_id: str, phone_number: str, patient_name: str = "Unkno
                 next_token = max(tokens) + 1
                 
         # Get currently serving token and clinic settings
-        clinic_resp = supabase.table("clinics").select("current_serving_token, closed_date, working_days, working_hours").eq("id", clinic_id).execute()
+        clinic_resp = supabase.table("clinics").select("current_serving_token, closed_date, working_days, working_hours, booking_mode").eq("id", clinic_id).execute()
         cdata = clinic_resp.data[0] if clinic_resp.data else {}
+        
+        if cdata.get("booking_mode") == "scheduled":
+            return {"status": "error", "message": "CRITICAL: This clinic operates on a Scheduled System. You MUST call `book_slot` instead of `generate_token`."}
+            
         current_serving = cdata.get("current_serving_token", 0)
         
         if cdata.get("closed_date") == today_str:
@@ -349,7 +356,7 @@ def generate_token(clinic_id: str, phone_number: str, patient_name: str = "Unkno
         
         return {
             "status": "success",
-            "message": f"Successfully generated Token #{next_token}. There are {people_ahead} people ahead of them in the queue. Tell this to the patient."
+            "message": f"Successfully generated Token #{next_token}. The current serving token is #{current_serving}. There are {people_ahead} people ahead of them in the queue. Tell all this info to the patient."
         }
     except Exception as e:
         return {"status": "error", "error_message": str(e)}
