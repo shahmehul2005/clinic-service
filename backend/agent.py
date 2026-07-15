@@ -38,61 +38,43 @@ META_CLIENT_SECRET = os.getenv("META_CLIENT_SECRET")
 ADMIN_PIN = os.getenv("ADMIN_PIN", "123456")
 
 # Database Context Helpers
-def get_patient_clinic_context(phone_number: str):
+def get_patient_name(phone_number: str) -> str:
     """
-    Checks past appointments to find the patient's last visited clinic.
-    Args:
-        phone_number (str): The patient's WhatsApp number.
-    Returns:
-        tuple: (clinic_id, clinic_name, booking_mode, extra_context, patient_name)
+    Checks past appointments to find the patient's name to save them from re-typing it.
     """
     try:
         response = supabase.table("appointments") \
-            .select("clinic_id, patient_name") \
+            .select("patient_name") \
             .eq("phone_number", phone_number) \
             .order("appointment_time", desc=True) \
             .limit(1) \
             .execute()
         if response.data:
-            clinic_id = response.data[0]["clinic_id"]
-            patient_name = response.data[0].get("patient_name", "Unknown")
-            clinic_resp = supabase.table("clinics").select("business_name, booking_mode, closed_date, working_days, working_hours, current_serving_token").eq("id", clinic_id).execute()
-            if clinic_resp.data:
-                cdata = clinic_resp.data[0]
-                clinic_name = cdata.get("business_name", "Unknown Clinic")
-                booking_mode = cdata.get("booking_mode", "scheduled")
-                extra_context = {}
-                
-                if booking_mode == "token":
-                    today_str = datetime.now().strftime("%Y-%m-%d")
-                    t_resp = supabase.table("appointments").select("token_number").eq("clinic_id", clinic_id).gte("appointment_time", f"{today_str} 00:00:00").lte("appointment_time", f"{today_str} 23:59:59").not_("token_number", "is", "null").execute()
-                    max_t = max([r["token_number"] for r in t_resp.data if r["token_number"] is not None] or [0]) if t_resp.data else 0
-                    cur_t = cdata.get("current_serving_token") or 0
-                    extra_context["waiting_queue"] = max(0, max_t - cur_t)
-                    extra_context["last_token"] = max_t
-                    extra_context["current_serving_token"] = cur_t
-            else:
-                clinic_name = "Unknown Clinic"
-                booking_mode = "scheduled"
-                extra_context = {}
-            return clinic_id, clinic_name, booking_mode, extra_context, patient_name
+            return response.data[0].get("patient_name", "")
     except Exception as e:
-        print(f"Error looking up patient clinic history: {e}")
-    return None, None, None, None, None
+        print(f"Error looking up patient name: {e}")
+    return ""
 
 def get_all_clinics() -> list:
-    """Retrieves all active registered clinics from the database."""
+    """Retrieves all active registered clinics and their live stats."""
     try:
         response = supabase.table("clinics") \
-            .select("id, business_name, trial_end_date, booking_mode") \
+            .select("id, business_name, trial_end_date, booking_mode, current_serving_token, closed_date, working_days, working_hours") \
             .execute()
         if response.data:
             now = datetime.now()
-            # A clinic is active if trial_end_date is NULL (permanent) or in the future
+            today_str = now.strftime("%Y-%m-%d")
             active_clinics = []
             for c in response.data:
                 trial_end = c.get("trial_end_date")
                 if not trial_end or datetime.fromisoformat(trial_end.replace('Z', '+00:00')) > now.astimezone():
+                    # Calculate token queue if token mode
+                    if c.get("booking_mode") == "token":
+                        t_resp = supabase.table("appointments").select("token_number").eq("clinic_id", c["id"]).gte("appointment_time", f"{today_str} 00:00:00").lte("appointment_time", f"{today_str} 23:59:59").not_("token_number", "is", "null").execute()
+                        max_t = max([r["token_number"] for r in t_resp.data if r["token_number"] is not None] or [0]) if t_resp.data else 0
+                        cur_t = c.get("current_serving_token") or 0
+                        c["waiting_queue"] = max(0, max_t - cur_t)
+                        c["last_token"] = max_t
                     active_clinics.append(c)
             return active_clinics
         return []
@@ -370,13 +352,10 @@ instruction = (
     "- If Hindi is chosen, reply ONLY in pure Devanagari script (e.g. नमस्ते). NEVER use Hinglish.\n\n"
     
     "WORKFLOW & ROUTING:\n"
-    "Step 1 (Identify Clinic): Check [Context] for `clinic_id`.\n"
-    "- If `IS_FIRST_TIME=True` OR the patient asks to change clinics: Ask them to choose a clinic from the `available_clinics` list. Do NOT show internal IDs.\n"
-    "- If they already have a `clinic_id` and didn't ask to change: Acknowledge it (e.g. 'Welcome back to [Clinic Name]').\n"
+    "Step 1 (Identify Clinic): Present the `available_clinics` list and ask them which clinic they want to visit. Do NOT show internal IDs.\n"
     
-    "Step 2 (Apply Specific Clinic Workflow): Determine the active clinic's `booking_mode`.\n"
-    "- CRITICAL: If the patient just chose a clinic from the `available_clinics` list, you MUST use the `booking_mode` specified in that list! IGNORE the `booking_mode` in the main Context (that is their old clinic).\n"
-    "- Follow the matching workflow below based on the active clinic's `booking_mode`:\n\n"
+    "Step 2 (Apply Specific Clinic Workflow): Once the patient tells you which clinic they chose, you MUST use the `booking_mode` specified in the `available_clinics` list for that specific clinic!\n"
+    "- Follow the matching workflow below based on the chosen clinic's `booking_mode`:\n\n"
     
     "WORKFLOW A: SCHEDULED CLINICS (`booking_mode='scheduled'`)\n"
     "1. Ask for their preferred date and time. (If `patient_name` is NOT in Context, ask for their name too. If it is, just use it!).\n"
@@ -387,7 +366,7 @@ instruction = (
     
     "WORKFLOW B: TOKENIZED CLINICS (`booking_mode='token'`)\n"
     "1. If `patient_name` is NOT in Context, ask for it. If it is, skip this.\n"
-    "2. Tell them the `current_serving_token` and `last_token` from the `clinic_settings` context.\n"
+    "2. Tell them the `current_serving_token` and `last_token` strictly using the numbers provided in the `available_clinics` list for this clinic.\n"
     "3. Ask 'Do you want to book an appointment for today?'. (Token clinics ONLY book for today).\n"
     "4. If they say YES: Immediately call the `generate_token` tool.\n"
     "5. If they say NO or ask about anything else: Decline politely, as this is not our concern.\n\n"
@@ -687,24 +666,22 @@ def process_whatsapp_message(payload: dict):
                                 
                             user_message = message_obj["text"]["body"]
                             
-                            # Retrieve smart clinic context based on patient booking history
-                            clinic_id, clinic_name, booking_mode, extra_context = get_patient_clinic_context(user_phone)
+                            # Stateless Context Injection
+                            patient_name = get_patient_name(user_phone)
+                            clinics = get_all_clinics()
                             
-                            if clinic_id:
-                                if not is_clinic_active(clinic_id):
-                                    print(f"Ignored message: Clinic {clinic_id} trial expired.")
-                                    return
-                                    
-                                # Returning patient - auto route to their clinic
-                                clinics = get_all_clinics()
-                                clinics_str = ", ".join([f"[Name: '{c['business_name']}', Internal_ID: '{c['id']}', booking_mode: '{c.get('booking_mode', 'scheduled')}']" for c in clinics])
-                                context = f"[Context: clinic_id={clinic_id}, clinic_name='{clinic_name}', booking_mode='{booking_mode}', phone={user_phone}, patient_name='{patient_name}', available_clinics={clinics_str}, clinic_settings={json.dumps(extra_context)}]"
-                            else:
-                                # First time patient - fetch all available clinics to display options
-                                clinics = get_all_clinics()
-                                clinics_str = ", ".join([f"[Name: '{c['business_name']}', Internal_ID: '{c['id']}', booking_mode: '{c.get('booking_mode', 'scheduled')}']" for c in clinics])
-                                context = f"[Context: phone={user_phone}, IS_FIRST_TIME=True, available_clinics={clinics_str}]"
+                            # Build a comprehensive string of all clinics and their live states
+                            clinics_data = []
+                            for c in clinics:
+                                base_info = f"[Name: '{c['business_name']}', Internal_ID: '{c['id']}', booking_mode: '{c.get('booking_mode', 'scheduled')}'"
+                                if c.get("booking_mode") == "token":
+                                    base_info += f", last_token: {c.get('last_token', 0)}, current_serving: {c.get('current_serving_token', 0)}, waiting: {c.get('waiting_queue', 0)}"
+                                base_info += "]"
+                                clinics_data.append(base_info)
                                 
+                            clinics_str = ", ".join(clinics_data)
+                            context = f"[Context: phone={user_phone}, patient_name='{patient_name}', available_clinics={clinics_str}]"
+                            
                             current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                             agent_prompt = f"[Current System Time: {current_time}]\n{context}\nUser says: {user_message}"
                             
