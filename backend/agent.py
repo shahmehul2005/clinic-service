@@ -357,7 +357,7 @@ instruction = (
     "- If Hindi is chosen, reply ONLY in pure Devanagari script (e.g. नमस्ते). NEVER use Hinglish.\n\n"
     
     "WORKFLOW & ROUTING:\n"
-    "Step 1 (Identify Clinic): Naturally present the names of the available clinics and ask them which clinic they want to visit. Format the list as a natural sentence or bullet points (e.g. 'We have Demo Clinic and Test Clinic 3.'). Do NOT output raw JSON or internal IDs.\n"
+    "Step 1 (Identify Clinic): Naturally present the names of the available clinics and ask them which clinic they want to visit. Format the list as a natural sentence or bullet points based on the ACTUAL `available_clinics` list provided in the Context. Do NOT output raw JSON or internal IDs.\n"
     
     "Step 2 (Apply Specific Clinic Workflow): Once the patient tells you which clinic they chose, you MUST use the `booking_mode` specified in the `available_clinics` list for that specific clinic!\n"
     "- Follow the matching workflow below based on the chosen clinic's `booking_mode`:\n\n"
