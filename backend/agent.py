@@ -70,7 +70,7 @@ def get_all_clinics() -> list:
                 if not trial_end or datetime.fromisoformat(trial_end.replace('Z', '+00:00')) > now.astimezone():
                     # Calculate token queue if token mode
                     if c.get("booking_mode") == "token":
-                        t_resp = supabase.table("appointments").select("token_number").eq("clinic_id", c["id"]).gte("appointment_time", f"{today_str} 00:00:00").lte("appointment_time", f"{today_str} 23:59:59").not_("token_number", "is", "null").execute()
+                        t_resp = supabase.table("appointments").select("token_number").eq("clinic_id", c["id"]).gte("appointment_time", f"{today_str} 00:00:00").lte("appointment_time", f"{today_str} 23:59:59").execute()
                         max_t = max([r["token_number"] for r in t_resp.data if r["token_number"] is not None] or [0]) if t_resp.data else 0
                         cur_t = c.get("current_serving_token") or 0
                         c["waiting_queue"] = max(0, max_t - cur_t)
@@ -289,7 +289,6 @@ def generate_token(clinic_id: str, phone_number: str, patient_name: str = "Unkno
             .eq("clinic_id", clinic_id) \
             .gte("appointment_time", f"{today_str} 00:00:00") \
             .lte("appointment_time", f"{today_str} 23:59:59") \
-            .not_("token_number", "is", "null") \
             .execute()
             
         next_token = 1
