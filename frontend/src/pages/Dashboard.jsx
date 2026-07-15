@@ -12,6 +12,11 @@ const Dashboard = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    navigate('/login');
+  };
   
   const [appointments, setAppointments] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -383,6 +388,9 @@ const Dashboard = () => {
             </p>
           </div>
           <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+            <button onClick={handleLogout} className="btn-v0-outline" style={{ padding: '0.75rem 1.5rem', fontSize: '1rem', borderRadius: '8px', color: 'var(--v0-red)', borderColor: 'var(--v0-red)' }}>
+              Log Out
+            </button>
             <button onClick={() => i18n.changeLanguage(i18n.language === 'en' ? 'hi' : 'en')} className="btn-v0-outline" style={{ padding: '0.75rem 1.5rem', fontSize: '1rem', borderRadius: '8px' }}>
               {i18n.language === 'en' ? 'हिंदी' : 'English'}
             </button>

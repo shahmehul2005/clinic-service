@@ -44,27 +44,24 @@ def get_patient_clinic_context(phone_number: str):
     Args:
         phone_number (str): The patient's WhatsApp number.
     Returns:
-        tuple: (clinic_id, clinic_name, booking_mode, extra_context) or (None, None, None, None) if new patient.
+        tuple: (clinic_id, clinic_name, booking_mode, extra_context, patient_name)
     """
     try:
         response = supabase.table("appointments") \
-            .select("clinic_id") \
+            .select("clinic_id, patient_name") \
             .eq("phone_number", phone_number) \
             .order("appointment_time", desc=True) \
             .limit(1) \
             .execute()
         if response.data:
             clinic_id = response.data[0]["clinic_id"]
+            patient_name = response.data[0].get("patient_name", "Unknown")
             clinic_resp = supabase.table("clinics").select("business_name, booking_mode, closed_date, working_days, working_hours, current_serving_token").eq("id", clinic_id).execute()
             if clinic_resp.data:
                 cdata = clinic_resp.data[0]
-                clinic_name = cdata["business_name"]
-                booking_mode = cdata.get("booking_mode") or "scheduled"
-                
+                clinic_name = cdata.get("business_name", "Unknown Clinic")
+                booking_mode = cdata.get("booking_mode", "scheduled")
                 extra_context = {}
-                if cdata.get("closed_date"): extra_context["closed_date"] = cdata["closed_date"]
-                if cdata.get("working_days"): extra_context["working_days"] = cdata["working_days"]
-                if cdata.get("working_hours"): extra_context["working_hours"] = cdata["working_hours"]
                 
                 if booking_mode == "token":
                     today_str = datetime.now().strftime("%Y-%m-%d")
@@ -78,10 +75,10 @@ def get_patient_clinic_context(phone_number: str):
                 clinic_name = "Unknown Clinic"
                 booking_mode = "scheduled"
                 extra_context = {}
-            return clinic_id, clinic_name, booking_mode, extra_context
+            return clinic_id, clinic_name, booking_mode, extra_context, patient_name
     except Exception as e:
         print(f"Error looking up patient clinic history: {e}")
-    return None, None, None, None
+    return None, None, None, None, None
 
 def get_all_clinics() -> list:
     """Retrieves all active registered clinics from the database."""
@@ -382,14 +379,14 @@ instruction = (
     "- Follow the matching workflow below based on the active clinic's `booking_mode`:\n\n"
     
     "WORKFLOW A: SCHEDULED CLINICS (`booking_mode='scheduled'`)\n"
-    "1. Ask for their preferred date, time, and name.\n"
+    "1. Ask for their preferred date and time. (If `patient_name` is NOT in Context, ask for their name too. If it is, just use it!).\n"
     "2. If they provide a date and time, call `check_availability`.\n"
     "3. If the slot is free, call `book_slot` to confirm.\n"
     "4. If the time clashes, ask for another time.\n"
     "5. If they explicitly ask 'what slots are free today?', use `check_availability` to list slots. Do NOT list slots preemptively.\n\n"
     
     "WORKFLOW B: TOKENIZED CLINICS (`booking_mode='token'`)\n"
-    "1. Ask for the patient's name.\n"
+    "1. If `patient_name` is NOT in Context, ask for it. If it is, skip this.\n"
     "2. Tell them the `current_serving_token` and `last_token` from the `clinic_settings` context.\n"
     "3. Ask 'Do you want to book an appointment for today?'. (Token clinics ONLY book for today).\n"
     "4. If they say YES: Immediately call the `generate_token` tool.\n"
@@ -701,7 +698,7 @@ def process_whatsapp_message(payload: dict):
                                 # Returning patient - auto route to their clinic
                                 clinics = get_all_clinics()
                                 clinics_str = ", ".join([f"[Name: '{c['business_name']}', Internal_ID: '{c['id']}', booking_mode: '{c.get('booking_mode', 'scheduled')}']" for c in clinics])
-                                context = f"[Context: clinic_id={clinic_id}, clinic_name='{clinic_name}', booking_mode='{booking_mode}', phone={user_phone}, available_clinics={clinics_str}, clinic_settings={json.dumps(extra_context)}]"
+                                context = f"[Context: clinic_id={clinic_id}, clinic_name='{clinic_name}', booking_mode='{booking_mode}', phone={user_phone}, patient_name='{patient_name}', available_clinics={clinics_str}, clinic_settings={json.dumps(extra_context)}]"
                             else:
                                 # First time patient - fetch all available clinics to display options
                                 clinics = get_all_clinics()
