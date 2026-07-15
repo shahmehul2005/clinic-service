@@ -168,13 +168,41 @@ def check_availability(clinic_id: str, date_str: str) -> dict:
             .lte("appointment_time", f"{date_str} 23:59:59") \
             .execute()
             
-        booked = [record["appointment_time"] for record in response.data]
+        booked_dts = []
+        for record in response.data:
+            # Handle both "YYYY-MM-DD HH:MM" and "YYYY-MM-DDTHH:MM:SS" formats
+            dt_str = record["appointment_time"].replace("T", " ")[:16]
+            booked_dts.append(datetime.strptime(dt_str, "%Y-%m-%d %H:%M"))
+            
+        import random
+        available_slots = []
+        now = datetime.now()
+        is_today = (date_str == now.strftime("%Y-%m-%d"))
+        
+        for h in range(10, 20):
+            for m in (0, 10, 20, 30, 40, 50):
+                slot_str = f"{date_str} {h:02d}:{m:02d}"
+                slot_dt = datetime.strptime(slot_str, "%Y-%m-%d %H:%M")
+                
+                # If booking for today, don't suggest past times
+                if is_today and slot_dt < now:
+                    continue
+                    
+                conflict = False
+                for b_dt in booked_dts:
+                    if abs((b_dt - slot_dt).total_seconds()) < 600: # 10 minutes
+                        conflict = True
+                        break
+                if not conflict:
+                    available_slots.append(f"{h:02d}:{m:02d}")
+                    
+        suggested = random.sample(available_slots, min(5, len(available_slots)))
+        suggested.sort()
         
         return {
             "status": "success",
-            "clinic_hours": "10:00 AM to 8:00 PM, 10-minute slots",
-            "already_booked_slots": booked,
-            "instruction": "Offer the user 2 or 3 available slot times that are AT LEAST 10 minutes apart from any already_booked_slots."
+            "suggested_available_slots": suggested,
+            "instruction": "Offer these exact available slots to the user."
         }
     except Exception as e:
         return {"status": "error", "error_message": str(e)}
