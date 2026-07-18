@@ -212,7 +212,7 @@ def check_availability(clinic_id: str, date_str: str) -> dict:
             "instruction": "DO NOT show the full list to the user. Offer ONLY the 'suggested_available_slots'. But if the user asks for a specific time, check if it exists in 'all_available_slots'."
         }
     except Exception as e:
-        return {"status": "error", "error_message": str(e)}
+        return {"status": "error", "message": str(e)}
 
 def book_slot(clinic_id: str, phone_number: str, date_str: str, time_str: str, patient_name: str = "Unknown") -> dict:
     """
@@ -252,7 +252,7 @@ def book_slot(clinic_id: str, phone_number: str, date_str: str, time_str: str, p
                     return {"status": "error", "message": f"CRITICAL: Requested time is outside working hours ({start_time} to {end_time}). Offer another time."}
 
         # 1. Check if time is in the past
-        target_dt = datetime.strptime(timestamp, "%Y-%m-%d %H:%M")
+        target_dt = datetime.strptime(timestamp, "%Y-%m-%d %H:%M").replace(tzinfo=IST)
         if target_dt < get_now():
             return {"status": "error", "message": "CRITICAL: Cannot book appointments in the past. Ask the user for a future date/time."}
             
@@ -345,7 +345,7 @@ def generate_token(clinic_id: str, phone_number: str, patient_name: str = "Unkno
             "message": f"Successfully generated Token #{next_token}. The current serving token is #{current_serving}. There are {people_ahead} people ahead of them in the queue. Tell all this info to the patient."
         }
     except Exception as e:
-        return {"status": "error", "error_message": str(e)}
+        return {"status": "error", "message": str(e)}
 
 # 3. Initialize the Groq Client
 client = Groq() # automatically looks for GROQ_API_KEY in env
