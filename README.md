@@ -1,99 +1,83 @@
-# Sanwariya Tech
+# Clinic Service (Sanwariya Tech)
 
-![Sanwariya Tech Banner](https://via.placeholder.com/1200x400.png?text=Sanwariya+Tech+-+AI+WhatsApp+Automation)
+WhatsApp-first appointment system for clinics. Patients book, cancel, or take a walk-in token on WhatsApp. Reception sees the same queue on a web dashboard.
 
-Sanwariya Tech is a next-generation AI-powered automation and booking platform built for local businesses. It allows clinics, schools, coaching centers, and exporters to fully automate their customer inquiries and appointment scheduling 24/7 directly through the official Meta WhatsApp Business API.
+Live site: [clinic-service-tawny.vercel.app](https://clinic-service-tawny.vercel.app)
 
-WhatsApp booking is a **scripted workflow** (language → clinic → name → slot/token). Groq is only used to parse messy phrasing into JSON when regex/keywords miss. Confirmations always come from Python after a real database write.
+## What it does
 
-## 🚀 Key Features
+- **Scripted WhatsApp receptionist** (English or Hindi): language → clinic → name → timed slot **or** token. Replies are templates. Groq is used only to parse messy phrasing into JSON when regex/keywords miss. The model never confirms a booking.
+- **Two clinic modes**: scheduled 10-minute (configurable) slots, or same-day token queues with Call Next + WhatsApp notify.
+- **No double-books at the database**: canonical `slot_start` unique index and `SELECT FOR UPDATE` token numbers (see `backend/reliability_migration.sql`).
+- **Reception dashboard**: React + Supabase realtime. Auth-gated. Status updates send WhatsApp templates.
+- **Ops**: HMAC webhook verify, `wamid` idempotency, persisted workflow state, 2-hour appointment reminders, monthly Groq usage cap.
 
-- **Conversational AI Agent**: A natural language processing bot (supporting English and Hinglish) that understands patient/client intent, answers FAQs, and handles bookings without human intervention.
-- **Multilingual Support**: Fully translated user interface supporting English and Hindi (via `react-i18next`).
-- **Real-Time Dashboard**: Instant sync between the WhatsApp bot and the receptionist's secure web dashboard.
-- **Bulletproof Architecture**: Built on PostgreSQL with strict Row-Level Security (RLS) and unique constraints to guarantee zero double-bookings.
-- **B2B SaaS Ready**: Fully equipped with "White-Glove Sandbox Trial" funnels, Meta-compliant legal pages (Privacy, Terms, Data Deletion), and domain-agnostic architecture.
+## Stack
 
-## 🛠️ Technology Stack
+| Layer | Tech |
+| --- | --- |
+| WhatsApp | Meta Cloud API (webhooks + messages) |
+| Backend | FastAPI on Render (`agent:app`) |
+| LLM | Groq (`llama-3.3-70b-versatile`, fallback `llama-3.1-8b-instant`) as a JSON parser only |
+| DB / Auth | Supabase Postgres + Auth (JWT). Optional RLS in `enable_rls.sql` for dashboard tenancy — slot integrity is the unique index, not RLS. |
+| Frontend | React 19, Vite, React Router 7, i18next (EN/HI), Vercel |
 
-### Frontend (Deployed on Vercel)
-- **Framework**: React 19 + Vite
-- **Routing**: React Router DOM (v7)
-- **Styling**: Vanilla CSS with modern UI/UX design (Glassmorphism, custom CSS variables)
-- **Internationalization**: `i18next` & `react-i18next`
-- **Icons**: Lucide React
-
-### Backend (Deployed on Render)
-- **Framework**: FastAPI (Python)
-- **Integration**: Meta WhatsApp Cloud API (Webhooks & Messaging)
-- **Security**: HMAC SHA-256 Signature Validation for Webhooks
-
-### Database & Auth (Supabase)
-- **Database**: PostgreSQL
-- **Authentication**: Supabase Auth (JWT)
-
-## 📁 Project Structure
+## Repo layout
 
 ```
-clinic/
-├── backend/               # FastAPI Python application
-│   ├── agent.py           # FastAPI app, WhatsApp webhook, booking tools
-│   ├── ops.py             # Slot helpers and RPC wrappers
-│   ├── reliability_migration.sql  # Atomic slots, reminders, wamid, chat memory
-│   └── requirements.txt   # Python dependencies
-└── frontend/              # React application
-    ├── src/
-    │   ├── components/    # Reusable UI components (Navbar, Hero, Features, etc.)
-    │   ├── context/       # React Context providers (AuthContext)
-    │   ├── locales/       # i18n translation dictionaries (en.json, hi.json)
-    │   └── pages/         # Route pages (Home, Demo, Login, Legal docs)
-    ├── index.html
-    └── package.json
+clinic-service/
+├── backend/
+│   ├── agent.py                    # FastAPI, webhooks, tools
+│   ├── workflow.py                 # Rule-first booking state machine
+│   ├── ops.py                      # Slot helpers, RPC wrappers
+│   ├── reliability_migration.sql   # Atomic slots/tokens, reminders, wamid, chat
+│   └── test_*.py
+└── frontend/                       # Marketing site + dashboard
 ```
 
-## ⚙️ Local Development Setup
+## Local setup
 
-### 1. Clone the repository
 ```bash
 git clone https://github.com/shahmehul2005/clinic-service.git
 cd clinic-service
 ```
 
-### 2. Setup the Frontend
+Frontend:
+
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
-The frontend will run at `http://localhost:5173`.
 
-### 3. Setup the Backend
+Backend:
+
 ```bash
 cd backend
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+# Windows: venv\Scripts\activate
+source venv/bin/activate
 pip install -r requirements.txt
 uvicorn agent:app --reload
 ```
-The backend will run at `http://localhost:8000`.
 
-Run `backend/reliability_migration.sql` in the Supabase SQL editor before using booking, reminders, or webhook idempotency. Then:
+**Required:** run `backend/reliability_migration.sql` in the Supabase SQL editor before booking works.
 
 ```bash
 cd backend
 python -m pytest test_ops.py test_agent_tactics.py test_whatsapp_webhook.py test_reliability.py test_workflow.py -q
 ```
 
-### 4. Environment Variables
-You will need to set up the following environment variables across your `.env` files for Supabase and the Meta API:
-- `VITE_SUPABASE_URL`
-- `VITE_SUPABASE_ANON_KEY`
-- `WHATSAPP_API_TOKEN`
-- `WHATSAPP_PHONE_NUMBER_ID`
-- `WEBHOOK_VERIFY_TOKEN`
+CI runs the same tests on push (`.github/workflows/backend-tests.yml`).
 
-After cloning, apply `backend/reliability_migration.sql` in Supabase. That migration adds atomic slot/token RPCs, reminder jobs, webhook `wamid` idempotency, and persisted chat history. Set `ENABLE_BACKGROUND_JOBS=0` if you do not want the reminder poller (CI does this).
+## Environment
 
-## 📄 License & Legal
-This project belongs to **Sanwariya Tech**. All rights reserved.
-For data deletion or support inquiries, please contact `support@sanwariyatech.dev`.
+Frontend: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_API_URL`
+
+Backend: `SUPABASE_URL`, `SUPABASE_KEY` (service role), `GROQ_API_KEY`, `META_ACCESS_TOKEN`, `META_PHONE_NUMBER_ID`, `META_VERIFY_TOKEN`, `META_CLIENT_SECRET`, `ADMIN_PIN`
+
+Set `ENABLE_BACKGROUND_JOBS=0` to disable the reminder poller (CI does this).
+
+## License
+
+Sanwariya Tech. All rights reserved. Data deletion / support: `support@sanwariyatech.dev`
