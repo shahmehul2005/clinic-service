@@ -1,6 +1,6 @@
 # Clinic Service (Sanwariya Tech)
 
-WhatsApp-first appointment system for clinics. Patients book, cancel, or take a walk-in token on WhatsApp. Reception sees the same queue on a web dashboard.
+WhatsApp-first appointment system for clinics. Patients book, cancel, or take a walk-in token on WhatsApp. Reception sees the same queue on a web dashboard..
 
 Live site: [clinic-service-tawny.vercel.app](https://clinic-service-tawny.vercel.app)
 
