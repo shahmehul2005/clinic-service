@@ -1,5 +1,4 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { AuthProvider } from './context/AuthContext';
+import { Routes, Route } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import Hero from './components/Hero';
 import Features from './components/Features';
@@ -12,11 +11,7 @@ import Terms from './pages/Terms';
 import DataDeletion from './pages/DataDeletion';
 import Demo from './pages/Demo';
 import Admin from './pages/Admin';
-
-const ProtectedRoute = ({ children }) => {
-  // We will implement auth check here later
-  return children;
-};
+import ProtectedRoute from './components/ProtectedRoute';
 
 const Home = () => (
   <>
@@ -33,7 +28,7 @@ function App() {
     <Routes>
       <Route path="/" element={<Home />} />
       <Route path="/login" element={<Login />} />
-      <Route path="/dashboard" element={<Dashboard />} />
+      <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="/demo" element={<Demo />} />
       <Route path="/privacy" element={<Privacy />} />
       <Route path="/terms" element={<Terms />} />

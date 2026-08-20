@@ -4,6 +4,8 @@
 
 Sanwariya Tech is a next-generation AI-powered automation and booking platform built for local businesses. It allows clinics, schools, coaching centers, and exporters to fully automate their customer inquiries and appointment scheduling 24/7 directly through the official Meta WhatsApp Business API.
 
+WhatsApp booking is a **scripted workflow** (language → clinic → name → slot/token). Groq is only used to parse messy phrasing into JSON when regex/keywords miss. Confirmations always come from Python after a real database write.
+
 ## 🚀 Key Features
 
 - **Conversational AI Agent**: A natural language processing bot (supporting English and Hinglish) that understands patient/client intent, answers FAQs, and handles bookings without human intervention.
@@ -35,7 +37,9 @@ Sanwariya Tech is a next-generation AI-powered automation and booking platform b
 ```
 clinic/
 ├── backend/               # FastAPI Python application
-│   ├── main.py            # API routes and WhatsApp webhook handlers
+│   ├── agent.py           # FastAPI app, WhatsApp webhook, booking tools
+│   ├── ops.py             # Slot helpers and RPC wrappers
+│   ├── reliability_migration.sql  # Atomic slots, reminders, wamid, chat memory
 │   └── requirements.txt   # Python dependencies
 └── frontend/              # React application
     ├── src/
@@ -69,9 +73,16 @@ cd backend
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
-uvicorn main:app --reload
+uvicorn agent:app --reload
 ```
 The backend will run at `http://localhost:8000`.
+
+Run `backend/reliability_migration.sql` in the Supabase SQL editor before using booking, reminders, or webhook idempotency. Then:
+
+```bash
+cd backend
+python -m pytest test_ops.py test_agent_tactics.py test_whatsapp_webhook.py test_reliability.py test_workflow.py -q
+```
 
 ### 4. Environment Variables
 You will need to set up the following environment variables across your `.env` files for Supabase and the Meta API:
@@ -80,6 +91,8 @@ You will need to set up the following environment variables across your `.env` f
 - `WHATSAPP_API_TOKEN`
 - `WHATSAPP_PHONE_NUMBER_ID`
 - `WEBHOOK_VERIFY_TOKEN`
+
+After cloning, apply `backend/reliability_migration.sql` in Supabase. That migration adds atomic slot/token RPCs, reminder jobs, webhook `wamid` idempotency, and persisted chat history. Set `ENABLE_BACKGROUND_JOBS=0` if you do not want the reminder poller (CI does this).
 
 ## 📄 License & Legal
 This project belongs to **Sanwariya Tech**. All rights reserved.

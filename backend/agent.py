@@ -2,25 +2,44 @@ import os
 import hmac
 import hashlib
 import requests
+import asyncio
+import json
+import re
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
+
 from fastapi import FastAPI, Request, Response, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from supabase import create_client, Client
-import json
-import re
 from groq import Groq
 from dotenv import load_dotenv
 
+from ops import call_rpc, get_now, iter_slots, serialize_messages, trim_messages
+from workflow import default_workflow, handle_turn
+
 load_dotenv()
 
-
-# Timezone Helper
+# Timezone Helper (kept for tests that patch agent.IST / agent.get_now)
 IST = timezone(timedelta(hours=5, minutes=30))
-def get_now():
-    return datetime.now(IST)
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    task = None
+    enabled = os.getenv("ENABLE_BACKGROUND_JOBS", "1").lower() not in ("0", "false", "no")
+    if enabled:
+        task = asyncio.create_task(reminder_worker())
+    yield
+    if task:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+
+app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -103,40 +122,30 @@ def is_clinic_active(clinic_id: str) -> bool:
 
 # Rate Limiting Helper
 def check_and_increment_usage() -> bool:
-    """
-    Checks if the monthly API usage is under the strict limit of 990.
-    If it is, increments the usage count.
-    Returns True if allowed, False if limit exceeded.
-    """
+    """Atomically increment monthly LLM usage. Fail closed on errors."""
     try:
-        current_month = get_now().strftime("%Y-%m")
-        # Fetch current count
-        response = supabase.table("api_usage").select("message_count").eq("month_year", current_month).execute()
-        
-        if response.data:
-            current_count = response.data[0]["message_count"]
-            if current_count >= 990:
-                print(f"CRITICAL: Monthly limit of 990 reached for {current_month}. Message ignored.")
-                return False
-            else:
-                # Increment
-                supabase.table("api_usage").update({"message_count": current_count + 1}).eq("month_year", current_month).execute()
-                return True
+        result = call_rpc(supabase, "increment_api_usage", {"p_limit": 990})
+        if result is True or result is False:
+            allowed = bool(result)
+        elif isinstance(result, dict) and "message" in result and result.get("status") == "error":
+            print(f"Error checking API usage: {result['message']}")
+            print("Failing closed to prevent accidental billing.")
+            return False
         else:
-            # First message of the month
-            supabase.table("api_usage").insert({"month_year": current_month, "message_count": 1}).execute()
-            return True
-            
+            allowed = bool(result)
+        if not allowed:
+            print("CRITICAL: Monthly limit of 990 reached. Message ignored.")
+        return allowed
     except Exception as e:
         print(f"Error checking API usage: {e}")
-        # Fail closed to prevent accidental billing
         print("Failing closed to prevent accidental billing.")
         return False
 
 # Signature Verification Helper
 async def verify_signature(request: Request) -> bool:
     """Verifies that the request signature matches Meta client secret to secure the webhook."""
-    if not META_CLIENT_SECRET:
+    secret = os.getenv("META_CLIENT_SECRET") or META_CLIENT_SECRET
+    if not secret:
         # Bypassed if no secret is set (useful for local dev/testing)
         return True
         
@@ -148,7 +157,7 @@ async def verify_signature(request: Request) -> bool:
     body = await request.body()
     
     computed_sig = hmac.new(
-        META_CLIENT_SECRET.encode("utf-8"),
+        secret.encode("utf-8"),
         body,
         hashlib.sha256
     ).hexdigest()
@@ -156,57 +165,57 @@ async def verify_signature(request: Request) -> bool:
     return hmac.compare_digest(expected_sig, computed_sig)
 
 
-# 2. Define ADK Tools
+# 2. Booking tools (writes go through Postgres RPCs for row locks + unique slots)
+
 def check_availability(clinic_id: str, date_str: str) -> dict:
-    """
-    Checks Supabase for booked slots on a specific date for a specific clinic.
-    Args:
-        clinic_id (str): The UUID of the clinic.
-        date_str (str): Date in YYYY-MM-DD format.
-    Returns:
-        dict: List of already booked slots, or an error.
-    """
+    """Lists free canonical slots for a scheduled clinic on one date."""
     try:
-        response = supabase.table("appointments") \
-            .select("appointment_time") \
-            .eq("clinic_id", clinic_id) \
-            .gte("appointment_time", f"{date_str} 00:00:00") \
-            .lte("appointment_time", f"{date_str} 23:59:59") \
-            .execute()
-            
-        booked_dts = []
-        for record in response.data:
-            # Handle both "YYYY-MM-DD HH:MM" and "YYYY-MM-DDTHH:MM:SS" formats
-            dt_str = record["appointment_time"].replace("T", " ")[:16]
-            booked_dts.append(datetime.strptime(dt_str, "%Y-%m-%d %H:%M"))
-            
-        import random
-        available_slots = []
+        clinic_resp = supabase.table("clinics").select(
+            "booking_mode, closed_date, working_days, working_hours, slot_duration_minutes"
+        ).eq("id", clinic_id).execute()
+        if not clinic_resp.data:
+            return {"status": "error", "message": "Clinic not found."}
+        cdata = clinic_resp.data[0]
+        if cdata.get("booking_mode") == "token":
+            return {"status": "error", "message": "CRITICAL: Token clinic. Call generate_token instead of check_availability."}
+
+        duration = int(cdata.get("slot_duration_minutes") or 10)
+        working_hours = cdata.get("working_hours") or {"start": "09:00", "end": "21:00"}
+        working_days = cdata.get("working_days") or []
+        target_day = datetime.strptime(date_str, "%Y-%m-%d")
+        day_name = target_day.strftime("%A")
+        if working_days and day_name not in working_days:
+            return {"status": "error", "message": f"CRITICAL: The clinic is closed on {day_name}s. Offer another date."}
+        if cdata.get("closed_date") == date_str:
+            return {"status": "error", "message": f"CRITICAL: The clinic is closed on {date_str}. Offer another date."}
+
+        booked_resp = supabase.table("appointments").select("slot_start, appointment_time").eq(
+            "clinic_id", clinic_id
+        ).gte("appointment_time", f"{date_str} 00:00:00").lte(
+            "appointment_time", f"{date_str} 23:59:59"
+        ).execute()
+
+        booked = set()
+        for record in (booked_resp.data or []):
+            raw = record.get("slot_start") or record.get("appointment_time")
+            if not raw:
+                continue
+            booked.add(str(raw).replace("T", " ")[:16])
+
         now = get_now()
-        is_today = (date_str == now.strftime("%Y-%m-%d"))
-        
-        for h in range(10, 20):
-            for m in (0, 10, 20, 30, 40, 50):
-                slot_str = f"{date_str} {h:02d}:{m:02d}"
-                slot_dt = datetime.strptime(slot_str, "%Y-%m-%d %H:%M")
-                
-                # If booking for today, don't suggest past times
-                if is_today and slot_dt < now:
-                    continue
-                    
-                conflict = False
-                for b_dt in booked_dts:
-                    if abs((b_dt - slot_dt).total_seconds()) < 600: # 10 minutes
-                        conflict = True
-                        break
-                if not conflict:
-                    available_slots.append(f"{h:02d}:{m:02d}")
-                    
+        available_slots = []
+        for slot_dt in iter_slots(date_str, working_hours, duration, now):
+            key = slot_dt.strftime("%Y-%m-%d %H:%M")
+            if key not in booked:
+                available_slots.append(slot_dt.strftime("%H:%M"))
+
+        import random
         suggested = random.sample(available_slots, min(5, len(available_slots)))
         suggested.sort()
-        
+
         return {
             "status": "success",
+            "slot_duration_minutes": duration,
             "all_available_slots": available_slots,
             "suggested_available_slots": suggested,
             "instruction": "DO NOT show the full list to the user. Offer ONLY the 'suggested_available_slots'. But if the user asks for a specific time, check if it exists in 'all_available_slots'."
@@ -215,137 +224,67 @@ def check_availability(clinic_id: str, date_str: str) -> dict:
         return {"status": "error", "message": str(e)}
 
 def book_slot(clinic_id: str, phone_number: str, date_str: str, time_str: str, patient_name: str = "Unknown") -> dict:
-    """
-    Books the appointment slot in the database.
-    Args:
-        clinic_id (str): The UUID of the clinic.
-        phone_number (str): The patient's WhatsApp number.
-        date_str (str): Date in YYYY-MM-DD format.
-        time_str (str): Time in HH:MM:00 format (24-hour).
-        patient_name (str): Optional name of the patient.
-    """
+    """Atomically books a canonical slot (Postgres lock + unique slot_start)."""
+    time_str = (time_str or "")[:5]
     timestamp = f"{date_str} {time_str}"
-    
-    try:
-        # Fetch clinic settings
-        clinic_resp = supabase.table("clinics").select("closed_date, working_days, working_hours, booking_mode").eq("id", clinic_id).execute()
-        if clinic_resp.data:
-            cdata = clinic_resp.data[0]
-            if cdata.get("booking_mode") == "token":
-                return {"status": "error", "message": "CRITICAL: This clinic operates on a Token System. You MUST call `generate_token` instead of `book_slot`. Do NOT ask for date or time, just call `generate_token` immediately!"}
-                
-            if cdata.get("closed_date") == date_str:
-                 return {"status": "error", "message": f"CRITICAL: The clinic is closed on {date_str}. Offer another date."}
-            
-            target_dt = datetime.strptime(timestamp, "%Y-%m-%d %H:%M")
-            day_name = target_dt.strftime("%A")
-            
-            working_days = cdata.get("working_days") or []
-            if working_days and day_name not in working_days:
-                 return {"status": "error", "message": f"CRITICAL: The clinic is closed on {day_name}s. Offer another date."}
-                 
-            working_hours = cdata.get("working_hours") or {}
-            if working_hours:
-                start_time = datetime.strptime(working_hours.get("start", "00:00"), "%H:%M").time()
-                end_time = datetime.strptime(working_hours.get("end", "23:59"), "%H:%M").time()
-                if not (start_time <= target_dt.time() <= end_time):
-                    return {"status": "error", "message": f"CRITICAL: Requested time is outside working hours ({start_time} to {end_time}). Offer another time."}
-
-        # 1. Check if time is in the past
-        target_dt = datetime.strptime(timestamp, "%Y-%m-%d %H:%M").replace(tzinfo=IST)
-        if target_dt < get_now():
-            return {"status": "error", "message": "CRITICAL: Cannot book appointments in the past. Ask the user for a future date/time."}
-            
-        # 2. Check for 10-minute conflicts
-        start_window = (target_dt - timedelta(minutes=9)).strftime("%Y-%m-%d %H:%M:%S")
-        end_window = (target_dt + timedelta(minutes=9)).strftime("%Y-%m-%d %H:%M:%S")
-        
-        conflict_check = supabase.table("appointments") \
-            .select("appointment_time") \
-            .eq("clinic_id", clinic_id) \
-            .gte("appointment_time", start_window) \
-            .lte("appointment_time", end_window) \
-            .execute()
-            
-        if conflict_check.data:
-            return {"status": "error", "message": "CRITICAL: Slot is taken (another patient is booked within 10 minutes of this time). Apologize and offer another time."}
-
-        # 2. Insert if free
-        supabase.table("appointments").insert({
-            "clinic_id": clinic_id,
-            "phone_number": phone_number,
-            "patient_name": patient_name,
-            "appointment_time": timestamp,
-            "status": "booked"
-        }).execute()
-        return {"status": "success", "message": f"Successfully booked for {timestamp}."}
-    except Exception as e:
-        error_msg = str(e)
-        if "unique constraint" in error_msg.lower() or "duplicate key" in error_msg.lower() or "23505" in error_msg:
-            return {"status": "error", "message": "CRITICAL: Slot taken. Apologize and offer another time."}
-        return {"status": "error", "message": f"Database error: {error_msg}"}
+    return call_rpc(supabase, "book_slot_atomic", {
+        "p_clinic_id": clinic_id,
+        "p_phone_number": phone_number,
+        "p_patient_name": patient_name,
+        "p_appointment_time": timestamp,
+    })
 
 def generate_token(clinic_id: str, phone_number: str, patient_name: str = "Unknown") -> dict:
-    """Generates a queue token for clinics in token mode."""
-    today_str = get_now().strftime("%Y-%m-%d")
-    try:
-        # Get current max token for today
-        response = supabase.table("appointments") \
-            .select("token_number") \
-            .eq("clinic_id", clinic_id) \
-            .gte("appointment_time", f"{today_str} 00:00:00") \
-            .lte("appointment_time", f"{today_str} 23:59:59") \
-            .execute()
-            
-        next_token = 1
-        if response.data:
-            tokens = [r["token_number"] for r in response.data if r["token_number"] is not None]
-            if tokens:
-                next_token = max(tokens) + 1
-                
-        # Get currently serving token and clinic settings
-        clinic_resp = supabase.table("clinics").select("current_serving_token, closed_date, working_days, working_hours, booking_mode").eq("id", clinic_id).execute()
-        cdata = clinic_resp.data[0] if clinic_resp.data else {}
-        
-        if cdata.get("booking_mode") == "scheduled":
-            return {"status": "error", "message": "CRITICAL: This clinic operates on a Scheduled System. You MUST call `book_slot` instead of `generate_token`."}
-            
-        current_serving = cdata.get("current_serving_token", 0)
-        
-        if cdata.get("closed_date") == today_str:
-            return {"status": "error", "message": "CRITICAL: The clinic is closed for today. Tell the patient no more tokens are being issued today."}
-        
-        now = get_now()
-        day_name = now.strftime("%A")
-        working_days = cdata.get("working_days") or []
-        working_hours = cdata.get("working_hours") or {}
-        if working_days and day_name not in working_days:
-            return {"status": "error", "message": f"CRITICAL: The clinic is closed today ({day_name}). Tell the patient."}
-        if working_hours:
-            start_time = datetime.strptime(working_hours.get("start", "00:00"), "%H:%M").time()
-            end_time = datetime.strptime(working_hours.get("end", "23:59"), "%H:%M").time()
-            if not (start_time <= now.time() <= end_time):
-                return {"status": "error", "message": f"CRITICAL: The clinic is closed right now. Working hours are {start_time} to {end_time}. Tell the patient."}
-                
-        # Insert appointment with token
-        timestamp = get_now().strftime("%Y-%m-%d %H:%M:%S")
-        supabase.table("appointments").insert({
-            "clinic_id": clinic_id,
-            "phone_number": phone_number,
-            "patient_name": patient_name,
-            "appointment_time": timestamp,
-            "status": "booked",
-            "token_number": next_token
-        }).execute()
-        
-        people_ahead = max(0, next_token - current_serving - 1)
-        
-        return {
-            "status": "success",
-            "message": f"Successfully generated Token #{next_token}. The current serving token is #{current_serving}. There are {people_ahead} people ahead of them in the queue. Tell all this info to the patient."
-        }
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
+    """Atomically issues the next token under a clinic row lock."""
+    return call_rpc(supabase, "generate_token_atomic", {
+        "p_clinic_id": clinic_id,
+        "p_phone_number": phone_number,
+        "p_patient_name": patient_name,
+    })
+
+def cancel_appointment(clinic_id: str, phone_number: str) -> dict:
+    """Cancels the soonest upcoming booked appointment for this patient."""
+    return call_rpc(supabase, "cancel_appointment_atomic", {
+        "p_clinic_id": clinic_id,
+        "p_phone_number": phone_number,
+    })
+
+def reschedule_slot(clinic_id: str, phone_number: str, date_str: str, time_str: str) -> dict:
+    """Moves the soonest upcoming booking to a new canonical slot."""
+    time_str = (time_str or "")[:5]
+    return call_rpc(supabase, "reschedule_slot_atomic", {
+        "p_clinic_id": clinic_id,
+        "p_phone_number": phone_number,
+        "p_appointment_time": f"{date_str} {time_str}",
+    })
+
+def execute_tool(function_name: str, function_args: dict) -> dict:
+    if function_name == "check_availability":
+        return check_availability(function_args.get("clinic_id"), function_args.get("date_str"))
+    if function_name == "book_slot":
+        return book_slot(
+            function_args.get("clinic_id"),
+            function_args.get("phone_number"),
+            function_args.get("date_str"),
+            function_args.get("time_str"),
+            function_args.get("patient_name", "Unknown"),
+        )
+    if function_name == "generate_token":
+        return generate_token(
+            function_args.get("clinic_id"),
+            function_args.get("phone_number"),
+            function_args.get("patient_name", "Unknown"),
+        )
+    if function_name == "cancel_appointment":
+        return cancel_appointment(function_args.get("clinic_id"), function_args.get("phone_number"))
+    if function_name == "reschedule_slot":
+        return reschedule_slot(
+            function_args.get("clinic_id"),
+            function_args.get("phone_number"),
+            function_args.get("date_str"),
+            function_args.get("time_str"),
+        )
+    return {"error": "Unknown function"}
 
 # 3. Initialize the Groq Client
 client = Groq() # automatically looks for GROQ_API_KEY in env
@@ -376,6 +315,10 @@ instruction = (
     "5. If they say NO: Decline politely.\n\n"
     
     "CRITICAL TOOL INSTRUCTION: When booking an appointment, you MUST actually execute the tool (`generate_token` or `book_slot`). Do NOT just say 'your appointment is booked' without calling the tool!\n\n"
+    "CANCELLATIONS AND RESCHEDULES:\n"
+    "- If the patient wants to cancel, call `cancel_appointment` with clinic_id and phone_number from Context.\n"
+    "- If they want a different time at a scheduled clinic, call `reschedule_slot` (do not book a second slot).\n"
+    "- Token clinics cannot reschedule to a clock time; cancel then generate_token if they still want to visit.\n\n"
     
     "STRICT ANTI-HALLUCINATION RULES:\n"
     "- If the user types a clinic name (like 'naman clinic'), immediately proceed to the workflow steps (ask for name/time). DO NOT make up conversational filler like 'eat salt' or unrelated phrases.\n"
@@ -432,10 +375,157 @@ groq_tools = [
                 "required": ["clinic_id", "phone_number", "patient_name"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "cancel_appointment",
+            "description": "Cancels the patient's soonest upcoming booked appointment at a clinic.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "clinic_id": {"type": "string"},
+                    "phone_number": {"type": "string"}
+                },
+                "required": ["clinic_id", "phone_number"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "reschedule_slot",
+            "description": "Moves the patient's soonest upcoming scheduled appointment to a new date and time.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "clinic_id": {"type": "string"},
+                    "phone_number": {"type": "string"},
+                    "date_str": {"type": "string", "description": "YYYY-MM-DD"},
+                    "time_str": {"type": "string", "description": "HH:MM"}
+                },
+                "required": ["clinic_id", "phone_number", "date_str", "time_str"]
+            }
+        }
     }
 ]
 
-# In-memory dictionary to hold multi-turn conversation history per phone number
+# Conversation memory is persisted per phone so Render restarts / multiple instances stay consistent.
+
+def load_chat(phone: str) -> list:
+    messages, _wf = load_session(phone)
+    return messages
+
+
+def load_session(phone: str, patient_name: str = ""):
+    try:
+        resp = supabase.table("chat_histories").select("messages").eq("phone_number", phone).limit(1).execute()
+        if resp.data and resp.data[0].get("messages") is not None:
+            blob = resp.data[0]["messages"]
+            if isinstance(blob, dict) and ("workflow" in blob or "messages" in blob):
+                msgs = blob.get("messages") or []
+                wf = blob.get("workflow") or default_workflow(patient_name)
+                return msgs, wf
+            if isinstance(blob, list):
+                return blob, default_workflow(patient_name)
+    except Exception as e:
+        print(f"Error loading chat history: {e}")
+    return [], default_workflow(patient_name)
+
+
+def save_chat(phone: str, messages: list):
+    save_session(phone, messages, default_workflow())
+
+
+def save_session(phone: str, messages: list, workflow: dict):
+    try:
+        payload = {
+            "phone_number": phone,
+            "messages": {
+                "workflow": workflow,
+                "messages": trim_messages(serialize_messages(messages or []), max_len=20),
+            },
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        supabase.table("chat_histories").upsert(payload).execute()
+    except Exception as e:
+        print(f"Error saving chat history: {e}")
+
+
+def claim_message_id(wamid: str, phone: str) -> bool:
+    """Return False if Meta already delivered this wamid (retry). Missing id always proceeds."""
+    if not wamid:
+        return True
+    result = call_rpc(supabase, "claim_wamid", {"p_wamid": wamid, "p_phone": phone})
+    if result is False:
+        return False
+    if result is True:
+        return True
+    if isinstance(result, dict) and result.get("status") == "error":
+        print(f"claim_wamid failed open to process once: {result}")
+        return True
+    return bool(result)
+
+
+def mark_appointment_cancelled(appointment_id: str):
+    supabase.table("appointments").update({
+        "status": "cancelled",
+        "slot_start": None,
+    }).eq("id", appointment_id).execute()
+    try:
+        supabase.table("scheduled_messages").update({"status": "cancelled"}).eq(
+            "appointment_id", appointment_id
+        ).eq("status", "pending").execute()
+    except Exception as e:
+        print(f"Could not cancel scheduled messages: {e}")
+
+
+def process_due_reminders():
+    rows = call_rpc(supabase, "claim_due_reminders", {"p_limit": 20})
+    if isinstance(rows, dict) and rows.get("status") == "error":
+        print(f"claim_due_reminders: {rows.get('message')}")
+        return
+    if not rows:
+        return
+    if isinstance(rows, dict):
+        rows = [rows]
+    for row in rows:
+        apt_id = row.get("appointment_id")
+        phone = row.get("phone_number")
+        msg_id = row.get("id")
+        try:
+            apt_resp = supabase.table("appointments").select(
+                "status, appointment_time, patient_name, clinic_id"
+            ).eq("id", apt_id).limit(1).execute()
+            apt = apt_resp.data[0] if apt_resp.data else None
+            if not apt or apt.get("status") in ("cancelled", "completed"):
+                supabase.table("scheduled_messages").update({"status": "skipped"}).eq("id", msg_id).execute()
+                continue
+            clinic_resp = supabase.table("clinics").select("business_name").eq("id", apt["clinic_id"]).limit(1).execute()
+            clinic_name = clinic_resp.data[0]["business_name"] if clinic_resp.data else "the clinic"
+            when = str(apt.get("appointment_time", "")).replace("T", " ")[:16]
+            body = f"Reminder: your appointment at {clinic_name} is at {when}. Reply CANCEL if you cannot make it."
+            send_whatsapp_message(phone, body)
+            supabase.table("scheduled_messages").update({"status": "sent"}).eq("id", msg_id).execute()
+        except Exception as e:
+            supabase.table("scheduled_messages").update({
+                "status": "pending",
+                "last_error": str(e)[:500],
+            }).eq("id", msg_id).execute()
+            print(f"Reminder send failed: {e}")
+
+
+async def reminder_worker():
+    await asyncio.sleep(5)
+    while True:
+        try:
+            process_due_reminders()
+        except Exception as e:
+            print(f"reminder_worker: {e}")
+        await asyncio.sleep(60)
+
+
+# Back-compat name used by older tests
 chat_sessions = {}
 
 def send_whatsapp_message(to_phone: str, message: str):
@@ -548,7 +638,8 @@ async def onboard_clinic(req: OnboardRequest):
             "trial_end_date": trial_end,
             "booking_mode": req.booking_mode,
             "working_days": req.working_days,
-            "working_hours": req.working_hours
+            "working_hours": req.working_hours,
+            "slot_duration_minutes": 10,
         }).execute()
         
         clinic_id = clinic_response.data[0]["id"]
@@ -598,8 +689,10 @@ async def update_appointment_status(appointment_id: str, req: StatusUpdateReques
         patient_phone = apt["phone_number"]
         clinic_id = apt["clinic_id"]
         
-        # 2. Update the status in the database
-        supabase.table("appointments").update({"status": req.status}).eq("id", appointment_id).execute()
+        if req.status == "cancelled":
+            mark_appointment_cancelled(appointment_id)
+        else:
+            supabase.table("appointments").update({"status": req.status}).eq("id", appointment_id).execute()
         
         # 3. Trigger WhatsApp template messages based on new status
         if req.status == 'completed' or req.status == 'cancelled':
@@ -666,124 +759,44 @@ def process_whatsapp_message(payload: dict):
                         user_phone = message_obj.get("from")
                         
                         if message_obj.get("type") == "text":
-                            # CRITICAL: Strict rate limiting check
-                            if not check_and_increment_usage():
+                            wamid = message_obj.get("id")
+                            if not claim_message_id(wamid, user_phone):
+                                print(f"Skipping duplicate webhook wamid={wamid}")
                                 return
-                                
+
                             user_message = message_obj["text"]["body"]
-                            
-                            # Stateless Context Injection
                             patient_name = get_patient_name(user_phone)
                             clinics = get_all_clinics()
-                            
-                            # Build a comprehensive string of all clinics and their live states
-                            clinics_data = []
-                            for c in clinics:
-                                base_info = f"[Name: '{c['business_name']}', Internal_ID: '{c['id']}', booking_mode: '{c.get('booking_mode', 'scheduled')}'"
-                                if c.get("booking_mode") == "token":
-                                    base_info += f", last_token: {c.get('last_token', 0)}, current_serving: {c.get('current_serving_token', 0)}, waiting: {c.get('waiting_queue', 0)}"
-                                base_info += "]"
-                                clinics_data.append(base_info)
-                                
-                            clinics_str = ", ".join(clinics_data)
-                            context = f"[Context: phone={user_phone}, patient_name='{patient_name}', available_clinics={clinics_str}]"
-                            
-                            current_time = get_now().strftime("%Y-%m-%d %H:%M:%S")
-                            agent_prompt = f"[Current System Time: {current_time}]\n{context}\nUser says: {user_message}"
-                            
-                            # Retrieve or create a chat session for this user to maintain multi-turn history
-                            if user_phone not in chat_sessions:
-                                chat_sessions[user_phone] = [{"role": "system", "content": instruction}]
-                                
-                            chat_sessions[user_phone].append({"role": "user", "content": agent_prompt})
-                                
-                            try:
-                                while True:
-                                    try:
-                                        response = client.chat.completions.create(
-                                            model="llama-3.1-8b-instant",
-                                            messages=chat_sessions[user_phone],
-                                            tools=groq_tools,
-                                            tool_choice="auto",
-                                            temperature=0.4
-                                        )
-                                        response_message = response.choices[0].message
-                                        chat_sessions[user_phone].append(response_message)
-                                    except Exception as inner_e:
-                                        err_str = str(inner_e)
-                                        if "tool_use_failed" in err_str and "failed_generation" in err_str:
-                                            match = re.search(r"'failed_generation':\s*'([^']*)'", err_str)
-                                            if match:
-                                                failed_gen = match.group(1)
-                                                class FakeMsg:
-                                                    pass
-                                                response_message = FakeMsg()
-                                                response_message.content = failed_gen
-                                                response_message.tool_calls = None
-                                                # CRITICAL FIX: Do NOT append failed_gen to chat_sessions, it poisons the context!
-                                                # Append a clean generic message instead.
-                                                chat_sessions[user_phone].append({"role": "assistant", "content": "I am executing the tool now."})
-                                            else:
-                                                raise inner_e
-                                        else:
-                                            raise inner_e
-                                    
-                                    # Fallback manual parsing for Llama 3 tool hallucinations
-                                    fallback_tool_executed = False
-                                    if not response_message.tool_calls and response_message.content:
-                                        match = re.search(r'[\(<]function=(\w+)>(.*?)</function[\)>]?', response_message.content, re.DOTALL)
-                                        if match:
-                                            function_name = match.group(1)
-                                            try:
-                                                function_args = json.loads(match.group(2))
-                                                if function_name == "check_availability":
-                                                    result = check_availability(function_args.get("clinic_id"), function_args.get("date_str"))
-                                                elif function_name == "book_slot":
-                                                    result = book_slot(function_args.get("clinic_id"), function_args.get("phone_number"), function_args.get("date_str"), function_args.get("time_str"), function_args.get("patient_name", "Unknown"))
-                                                elif function_name == "generate_token":
-                                                    result = generate_token(function_args.get("clinic_id"), function_args.get("phone_number"), function_args.get("patient_name", "Unknown"))
-                                                else:
-                                                    result = {"error": "Unknown function"}
-                                                    
-                                                # Simulate tool response so the model can read it
-                                                chat_sessions[user_phone].append({"role": "user", "content": f"System Tool Result from {function_name}: {json.dumps(result)}"})
-                                                fallback_tool_executed = True
-                                            except json.JSONDecodeError:
-                                                pass
+                            _history, wf = load_session(user_phone, patient_name)
+                            if patient_name and not wf.get("patient_name"):
+                                wf["patient_name"] = patient_name
 
-                                    if response_message.tool_calls:
-                                        for tool_call in response_message.tool_calls:
-                                            function_name = tool_call.function.name
-                                            function_args = json.loads(tool_call.function.arguments)
-                                            
-                                            if function_name == "check_availability":
-                                                result = check_availability(function_args.get("clinic_id"), function_args.get("date_str"))
-                                            elif function_name == "book_slot":
-                                                result = book_slot(function_args.get("clinic_id"), function_args.get("phone_number"), function_args.get("date_str"), function_args.get("time_str"), function_args.get("patient_name", "Unknown"))
-                                            elif function_name == "generate_token":
-                                                result = generate_token(function_args.get("clinic_id"), function_args.get("phone_number"), function_args.get("patient_name", "Unknown"))
-                                            else:
-                                                result = {"error": "Unknown function"}
-                                                
-                                            chat_sessions[user_phone].append({
-                                                "tool_call_id": tool_call.id,
-                                                "role": "tool",
-                                                "name": function_name,
-                                                "content": json.dumps(result)
-                                            })
-                                        # Loop continues to send tool results back to Groq
-                                    elif fallback_tool_executed:
-                                        # Loop again to let AI process the fallback tool result!
-                                        continue
-                                    else:
-                                        # Final text response
-                                        if response_message.content:
-                                            # Clean any weird tags just in case before sending to WhatsApp
-                                            clean_text = re.sub(r'[\(<]function=.*?</function[\)>]?', '', response_message.content, flags=re.DOTALL).strip()
-                                            if clean_text:
-                                                send_whatsapp_message(user_phone, clean_text)
-                                        break
-                                        
+                            tools = {
+                                "book_slot": book_slot,
+                                "generate_token": generate_token,
+                                "cancel_appointment": cancel_appointment,
+                                "reschedule_slot": reschedule_slot,
+                                "check_availability": check_availability,
+                            }
+                            try:
+                                reply, wf, used_groq = handle_turn(
+                                    user_message,
+                                    wf,
+                                    clinics,
+                                    user_phone,
+                                    get_now(),
+                                    tools,
+                                    groq_client=client,
+                                )
+                                if used_groq and not check_and_increment_usage():
+                                    send_whatsapp_message(
+                                        user_phone,
+                                        "Our AI receptionist is currently experiencing high traffic. Please wait about 1 minute and send your message again!",
+                                    )
+                                    return
+                                if reply:
+                                    send_whatsapp_message(user_phone, reply)
+                                save_session(user_phone, _history, wf)
                             except Exception as api_err:
                                 error_str = str(api_err)
                                 if "429" in error_str or "rate limit" in error_str.lower():
@@ -849,7 +862,7 @@ def api_cancel_token(req: CancelTokenRequest, bg_tasks: BackgroundTasks):
         resp = supabase.table("appointments").select("phone_number, token_number").eq("id", req.appointment_id).execute()
         if resp.data:
             apt = resp.data[0]
-            supabase.table("appointments").update({"status": "cancelled"}).eq("id", req.appointment_id).execute()
+            mark_appointment_cancelled(apt["id"])
             bg_tasks.add_task(send_whatsapp_template, apt["phone_number"], "appointment_cancelled")
         return {"status": "success"}
     except Exception as e:
@@ -880,7 +893,7 @@ def api_close_day(req: CloseDayRequest, bg_tasks: BackgroundTasks):
             
         if resp.data:
             for apt in resp.data:
-                supabase.table("appointments").update({"status": "cancelled"}).eq("id", apt["id"]).execute()
+                mark_appointment_cancelled(apt["id"])
                 bg_tasks.add_task(send_whatsapp_template, apt["phone_number"], "appointment_cancelled")
                 
         return {"status": "success", "message": f"Closed clinic and cancelled {len(resp.data) if resp.data else 0} appointments."}
