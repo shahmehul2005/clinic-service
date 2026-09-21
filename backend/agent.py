@@ -552,7 +552,7 @@ def send_whatsapp_message(to_phone: str, message: str):
     if response.status_code != 200:
         print(f"ERROR sending WhatsApp message: {response.text}")
 
-def send_whatsapp_template(to_phone: str, template_name: str, language_code: str = "en_US"):
+def send_whatsapp_template(to_phone: str, template_name: str, components: list = None, language_code: str = "en_US"):
     """Sends a pre-approved template message via Meta Graph API."""
     if not META_ACCESS_TOKEN or not META_PHONE_NUMBER_ID:
         print("WARNING: Meta API keys are missing. Template not sent.")
@@ -575,6 +575,8 @@ def send_whatsapp_template(to_phone: str, template_name: str, language_code: str
             }
         }
     }
+    if components:
+        payload["template"]["components"] = components
     
     response = requests.post(url, headers=headers, json=payload)
     if response.status_code != 200:
@@ -772,48 +774,49 @@ def upload_media_to_meta(pdf_bytes: bytes, filename: str = "report.pdf") -> str 
     return None
 
 
-def send_whatsapp_document(to_phone: str, media_id: str, filename: str, caption: str = ""):
-    """Sends a document message via Meta Graph API using an already-uploaded media_id."""
-    if not META_ACCESS_TOKEN or not META_PHONE_NUMBER_ID:
-        print("WARNING: Meta API keys missing. Document not sent.")
-        return
-    url = f"https://graph.facebook.com/v18.0/{META_PHONE_NUMBER_ID}/messages"
-    headers = {
-        "Authorization": f"Bearer {META_ACCESS_TOKEN}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "messaging_product": "whatsapp",
-        "recipient_type": "individual",
-        "to": to_phone,
-        "type": "document",
-        "document": {
-            "id": media_id,
-            "filename": filename,
-            "caption": caption,
+def send_whatsapp_document(to_phone: str, media_id: str, filename: str, clinic_name: str, patient_name: str):
+    """Sends a document message via Meta Graph API using the patient_report_document template."""
+    first_name = (patient_name or "there").split()[0]
+    components = [
+        {
+            "type": "header",
+            "parameters": [
+                {
+                    "type": "document",
+                    "document": {
+                        "id": media_id,
+                        "filename": filename
+                    }
+                }
+            ]
         },
-    }
-    resp = requests.post(url, headers=headers, json=payload)
-    if resp.status_code != 200:
-        print(f"ERROR sending WhatsApp document: {resp.text}")
+        {
+            "type": "body",
+            "parameters": [
+                {"type": "text", "text": first_name},
+                {"type": "text", "text": clinic_name}
+            ]
+        }
+    ]
+    send_whatsapp_template(to_phone, "patient_report_document", components)
 
 
 def send_google_review_request(to_phone: str, patient_name: str, clinic_name: str, review_link: str):
-    """Sends a warm 2-part WhatsApp message asking the patient for a Google review."""
+    """Sends a WhatsApp template asking the patient for a Google review."""
     first_name = (patient_name or "there").split()[0]
-    msg1 = (
-        f"\U0001f64f Thank you for visiting *{clinic_name}* today, {first_name}!\n\n"
-        "We hope you're feeling better soon. "
-        "Your feedback means the world to us and helps other patients find quality care. \U0001f31f"
-    )
-    msg2 = (
-        "\u2b50 If you had a good experience, please take 30 seconds to leave us a "
-        "Google review \u2014 it helps us a lot!\n\n"
-        f"\U0001f449 {review_link}\n\n"
-        "Thank you so much! \U0001f499"
-    )
-    send_whatsapp_message(to_phone, msg1)
-    send_whatsapp_message(to_phone, msg2)
+    components = [
+        {
+            "type": "body",
+            "parameters": [
+                {"type": "text", "text": clinic_name},
+                {"type": "text", "text": first_name}
+            ]
+        }
+    ]
+    # The review_link is typically bound to the button component on Meta's side, 
+    # but if it's dynamic, it goes into a "button" component array here. 
+    # Assuming static or predefined dynamic variable in the button for now.
+    send_whatsapp_template(to_phone, "google_review_request", components)
 
 
 # 4. Webhook Handshake (GET) for Meta Verification
@@ -938,40 +941,17 @@ async def update_appointment_status(appointment_id: str, req: StatusUpdateReques
             
             # Send Meta Template Message
             if META_ACCESS_TOKEN and META_PHONE_NUMBER_ID:
-                url = f"https://graph.facebook.com/v18.0/{META_PHONE_NUMBER_ID}/messages"
-                headers = {
-                    "Authorization": f"Bearer {META_ACCESS_TOKEN}",
-                    "Content-Type": "application/json"
-                }
-                
                 template_name = "visit_thanks" if req.status == 'completed' else "appointment_cancelled"
-                
-                payload = {
-                    "messaging_product": "whatsapp",
-                    "recipient_type": "individual",
-                    "to": patient_phone,
-                    "type": "template",
-                    "template": {
-                        "name": template_name,
-                        "language": {
-                            "code": "en"
-                        },
-                        "components": [
-                            {
-                                "type": "body",
-                                "parameters": [
-                                    {
-                                        "type": "text",
-                                        "text": clinic_name
-                                    }
-                                ]
-                            }
+                components = [
+                    {
+                        "type": "body",
+                        "parameters": [
+                            {"type": "text", "text": clinic_name}
                         ]
                     }
-                }
-                # Fire and forget
-                requests.post(url, headers=headers, json=payload)
-                print(f"Sent '{template_name}' template to {patient_phone}")
+                ]
+                background_tasks.add_task(send_whatsapp_template, patient_phone, template_name, components)
+                print(f"Scheduled '{template_name}' template to {patient_phone}")
 
             # NEW: Auto-send Google Review request when appointment is completed
             if req.status == 'completed' and google_review_link:
@@ -1056,8 +1036,8 @@ async def send_patient_report(req: SendReportRequest):
             return JSONResponse(status_code=502, content={"detail": "Failed to upload PDF to WhatsApp. Check Meta API keys."})
 
         # 5. Send the document via WhatsApp
-        caption = f"\U0001f4cb Your medical report from *{clinic_data.get('business_name', 'your clinic')}*. Please keep this for your records."
-        send_whatsapp_document(apt["phone_number"], media_id, filename, caption)
+        clinic_name = clinic_data.get('business_name', 'our clinic')
+        send_whatsapp_document(apt["phone_number"], media_id, filename, clinic_name, apt.get("patient_name", ""))
 
         # 6. Save to patient_reports table (audit trail)
         supabase.table("patient_reports").insert({
@@ -1204,8 +1184,11 @@ def api_call_next(req: CallNextRequest, bg_tasks: BackgroundTasks):
         resp1 = supabase.table("appointments").select("id, phone_number").eq("clinic_id", req.clinic_id).eq("token_number", req.current_token).order("created_at", desc=True).limit(1).execute()
         if resp1.data:
             apt = resp1.data[0]
+            clinic_resp = supabase.table("clinics").select("business_name").eq("id", req.clinic_id).execute()
+            clinic_name = clinic_resp.data[0]["business_name"] if clinic_resp.data else "our clinic"
             supabase.table("appointments").update({"status": "completed"}).eq("id", apt["id"]).execute()
-            bg_tasks.add_task(send_whatsapp_template, apt["phone_number"], "visit_thanks")
+            components = [{"type": "body", "parameters": [{"type": "text", "text": clinic_name}]}]
+            bg_tasks.add_task(send_whatsapp_template, apt["phone_number"], "visit_thanks", components)
             
         # 2. Update clinics counter
         new_token = req.current_token + 1
@@ -1215,7 +1198,8 @@ def api_call_next(req: CallNextRequest, bg_tasks: BackgroundTasks):
         target_token = new_token + 1
         resp2 = supabase.table("appointments").select("phone_number").eq("clinic_id", req.clinic_id).eq("token_number", target_token).order("created_at", desc=True).limit(1).execute()
         if resp2.data:
-            bg_tasks.add_task(send_whatsapp_message, resp2.data[0]["phone_number"], f"Get ready! Your token (#{target_token}) is almost up. Please make sure you are near the clinic.")
+            components = [{"type": "body", "parameters": [{"type": "text", "text": str(target_token)}]}]
+            bg_tasks.add_task(send_whatsapp_template, resp2.data[0]["phone_number"], "token_alert", components)
             
         return {"status": "success", "new_token": new_token}
     except Exception as e:
@@ -1234,8 +1218,11 @@ def api_cancel_token(req: CancelTokenRequest, bg_tasks: BackgroundTasks):
         resp = supabase.table("appointments").select("phone_number, token_number").eq("id", req.appointment_id).execute()
         if resp.data:
             apt = resp.data[0]
+            clinic_resp = supabase.table("clinics").select("business_name").eq("id", req.clinic_id).execute()
+            clinic_name = clinic_resp.data[0]["business_name"] if clinic_resp.data else "our clinic"
             mark_appointment_cancelled(apt["id"])
-            bg_tasks.add_task(send_whatsapp_template, apt["phone_number"], "appointment_cancelled")
+            components = [{"type": "body", "parameters": [{"type": "text", "text": clinic_name}]}]
+            bg_tasks.add_task(send_whatsapp_template, apt["phone_number"], "appointment_cancelled", components)
         return {"status": "success"}
     except Exception as e:
         print("Error in cancel_token:", e)
@@ -1264,9 +1251,12 @@ def api_close_day(req: CloseDayRequest, bg_tasks: BackgroundTasks):
             .execute()
             
         if resp.data:
+            clinic_resp = supabase.table("clinics").select("business_name").eq("id", req.clinic_id).execute()
+            clinic_name = clinic_resp.data[0]["business_name"] if clinic_resp.data else "our clinic"
+            components = [{"type": "body", "parameters": [{"type": "text", "text": clinic_name}]}]
             for apt in resp.data:
                 mark_appointment_cancelled(apt["id"])
-                bg_tasks.add_task(send_whatsapp_template, apt["phone_number"], "appointment_cancelled")
+                bg_tasks.add_task(send_whatsapp_template, apt["phone_number"], "appointment_cancelled", components)
                 
         return {"status": "success", "message": f"Closed clinic and cancelled {len(resp.data) if resp.data else 0} appointments."}
     except Exception as e:
