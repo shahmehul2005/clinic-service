@@ -813,9 +813,22 @@ def send_google_review_request(to_phone: str, patient_name: str, clinic_name: st
             ]
         }
     ]
-    # The review_link is typically bound to the button component on Meta's side, 
-    # but if it's dynamic, it goes into a "button" component array here. 
-    # Assuming static or predefined dynamic variable in the button for now.
+    
+    # Strip https:// or http:// if present, since Meta's Dynamic URL base is usually set to https://
+    clean_link = review_link.replace("https://", "").replace("http://", "")
+    
+    components.append({
+        "type": "button",
+        "sub_type": "url",
+        "index": "0", # The index of the button (0 for the first button)
+        "parameters": [
+            {
+                "type": "text",
+                "text": clean_link
+            }
+        ]
+    })
+    
     send_whatsapp_template(to_phone, "google_review_request", components)
 
 
