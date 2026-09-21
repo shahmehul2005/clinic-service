@@ -801,7 +801,7 @@ def send_whatsapp_document(to_phone: str, media_id: str, filename: str, clinic_n
     send_whatsapp_template(to_phone, "patient_report_document", components)
 
 
-def send_google_review_request(to_phone: str, patient_name: str, clinic_name: str, review_link: str):
+def send_google_review_request(to_phone: str, patient_name: str, clinic_name: str, clinic_id: str):
     """Sends a WhatsApp template asking the patient for a Google review."""
     first_name = (patient_name or "there").split()[0]
     components = [
@@ -814,8 +814,8 @@ def send_google_review_request(to_phone: str, patient_name: str, clinic_name: st
         }
     ]
     
-    # Strip https:// or http:// if present, since Meta's Dynamic URL base is usually set to https://
-    clean_link = review_link.replace("https://", "").replace("http://", "")
+    # Send the backend redirect URL path so Meta can append it to the Base URL
+    clean_link = f"api/reviews/{clinic_id}"
     
     components.append({
         "type": "button",
@@ -857,6 +857,21 @@ class OnboardRequest(BaseModel):
     booking_mode: str = "scheduled"
     working_days: list = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
     working_hours: dict = {"start": "09:00", "end": "21:00"}
+
+@app.get("/api/reviews/{clinic_id}")
+async def redirect_to_google_review(clinic_id: str):
+    """Universal redirect endpoint for Meta WhatsApp Button."""
+    try:
+        resp = supabase.table("clinics").select("google_review_link").eq("id", clinic_id).execute()
+        if resp.data and resp.data[0].get("google_review_link"):
+            url = resp.data[0]["google_review_link"]
+            if not url.startswith("http"):
+                url = "https://" + url
+            from fastapi.responses import RedirectResponse
+            return RedirectResponse(url=url)
+        return Response(content="Review link not configured for this clinic.", status_code=404)
+    except Exception as e:
+        return Response(content=str(e), status_code=500)
 
 @app.post("/api/admin/onboard")
 async def onboard_clinic(req: OnboardRequest):
@@ -973,7 +988,7 @@ async def update_appointment_status(appointment_id: str, req: StatusUpdateReques
                     patient_phone,
                     patient_name,
                     clinic_name,
-                    google_review_link,
+                    clinic_id,
                 )
                 print(f"Scheduled Google review request to {patient_phone}")
                 
