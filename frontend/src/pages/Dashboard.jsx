@@ -1,7 +1,8 @@
 import { useAuth } from '../context/AuthContext';
 import { 
   Home as HomeIcon, Calendar, Users, 
-  Search, Clock, CheckCircle2, User, XCircle, LifeBuoy, HeartPulse, Trash2
+  Search, Clock, CheckCircle2, User, XCircle, LifeBuoy, HeartPulse, Trash2,
+  FileText, Star, Settings, Plus, Minus, Send
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useEffect, useState, useMemo } from 'react';
@@ -26,6 +27,21 @@ const Dashboard = () => {
   const [currentServingToken, setCurrentServingToken] = useState(0);
   const [activeTab, setActiveTab] = useState('overview');
   
+  // Report modal state
+  const [reportModal, setReportModal] = useState(null);
+  const [reportForm, setReportForm] = useState({
+    patient_age: '', chief_complaint: '', diagnosis: '',
+    followup_date: '', special_notes: '',
+    medicines: [{ name: '', dosage: '', frequency: '', duration: '' }]
+  });
+  const [reportSending, setReportSending] = useState(false);
+  const [toast, setToast] = useState(null);
+
+  // Settings state
+  const [settings, setSettings] = useState({ google_review_link: '', doctor_name: '', clinic_address: '' });
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+  
   // Extract user's dynamic clinic ID, or default to mock for testing
   const clinicId = user?.user_metadata?.clinic_id || "00000000-0000-0000-0000-000000000001";
   
@@ -41,7 +57,7 @@ const Dashboard = () => {
     const fetchClinicData = async () => {
       const { data, error } = await supabase
         .from('clinics')
-        .select('business_name, trial_end_date, booking_mode, current_serving_token')
+        .select('business_name, trial_end_date, booking_mode, current_serving_token, google_review_link, doctor_name, clinic_address')
         .eq('id', clinicId)
         .single();
         
@@ -52,6 +68,12 @@ const Dashboard = () => {
         if (data.trial_end_date && new Date() > new Date(data.trial_end_date)) {
           setIsTrialExpired(true);
         }
+        setSettings({
+          google_review_link: data.google_review_link || '',
+          doctor_name: data.doctor_name || '',
+          clinic_address: data.clinic_address || '',
+        });
+        setSettingsLoaded(true);
       }
     };
     
@@ -169,10 +191,10 @@ const Dashboard = () => {
     });
     
     if (response.ok) {
-      alert("Clinic closed for today. Remaining appointments cancelled.");
-      fetchAppointments();
+      showToast("Clinic closed for today. Remaining appointments cancelled.", "success");
+      if (window._fetchAppointments) window._fetchAppointments();
     } else {
-      alert("Failed to close clinic for today.");
+      showToast("Failed to close clinic for today.", "error");
     }
   };
 
@@ -278,6 +300,87 @@ const Dashboard = () => {
     ).sort((a, b) => new Date(b.lastVisit) - new Date(a.lastVisit));
   }, [appointments, searchQuery]);
 
+  // ---- Toast helper ----
+  const showToast = (msg, type = 'success') => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3500);
+  };
+
+  // ---- Report helpers ----
+  const openReportModal = (apt) => {
+    setReportModal(apt);
+    setReportForm({
+      patient_age: '', chief_complaint: '', diagnosis: '',
+      followup_date: '', special_notes: '',
+      medicines: [{ name: '', dosage: '', frequency: '', duration: '' }]
+    });
+  };
+
+  const addMedicineRow = () => {
+    setReportForm(f => ({ ...f, medicines: [...f.medicines, { name: '', dosage: '', frequency: '', duration: '' }] }));
+  };
+
+  const removeMedicineRow = (i) => {
+    setReportForm(f => ({ ...f, medicines: f.medicines.filter((_, idx) => idx !== i) }));
+  };
+
+  const updateMedicineRow = (i, field, val) => {
+    setReportForm(f => {
+      const meds = [...f.medicines];
+      meds[i] = { ...meds[i], [field]: val };
+      return { ...f, medicines: meds };
+    });
+  };
+
+  const handleSendReport = async (e) => {
+    e.preventDefault();
+    if (!reportModal) return;
+    setReportSending(true);
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const resp = await fetch(`${apiUrl}/api/reports/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ appointment_id: reportModal.id, ...reportForm })
+      });
+      const data = await resp.json();
+      if (resp.ok) {
+        showToast(`✅ Report sent to ${reportModal.patient_name || 'patient'} on WhatsApp!`, 'success');
+        setReportModal(null);
+      } else {
+        showToast(`❌ Failed: ${data.detail || 'Unknown error'}`, 'error');
+      }
+    } catch (err) {
+      showToast('❌ Network error. Check if backend is running.', 'error');
+    } finally {
+      setReportSending(false);
+    }
+  };
+
+  // ---- Settings helpers ----
+  const handleSaveSettings = async (e) => {
+    e.preventDefault();
+    setSettingsSaving(true);
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const resp = await fetch(`${apiUrl}/api/clinics/${clinicId}/settings`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings)
+      });
+      if (resp.ok) {
+        showToast('✅ Settings saved successfully!', 'success');
+      } else {
+        const d = await resp.json();
+        showToast(`❌ Failed: ${d.detail || 'Unknown error'}`, 'error');
+      }
+    } catch (err) {
+      showToast('❌ Network error. Check if backend is running.', 'error');
+    } finally {
+      setSettingsSaving(false);
+    }
+  };
+
   const getReason = (idx) => {
     const reasons = ["Annual check-up", "Follow-up visit", "Lab results", "Knee pain consult", "Prescription refill", "Skin check"];
     return reasons[idx % reasons.length];
@@ -340,28 +443,22 @@ const Dashboard = () => {
           </div>
         </div>
 
-        <nav style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', flexGrow: 1 }}>
-          <div onClick={() => setActiveTab('overview')} style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.8rem 1rem', borderRadius: '12px', background: activeTab === 'overview' ? 'var(--v0-blue)' : 'transparent', color: activeTab === 'overview' ? 'white' : 'var(--text-secondary)', cursor: 'pointer' }}>
-            <HomeIcon size={20} /> 
-            <div>
-              <div style={{ fontWeight: 600, fontSize: '0.9rem', color: activeTab === 'overview' ? 'white' : 'var(--text-main)', lineHeight: 1.2 }}>{t('dashboard.overview')}</div>
-              <div style={{ fontSize: '0.75rem', opacity: 0.9 }}>{t('dashboard.overviewDesc')}</div>
+        <nav style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', flexGrow: 1 }}>
+          {[
+            ['overview', <HomeIcon size={20} />, t('dashboard.overview'), t('dashboard.overviewDesc')],
+            ['upcoming', <Calendar size={20} />, t('dashboard.appointments'), 'Upcoming Schedules'],
+            ['patients', <Users size={20} />, t('dashboard.patients'), t('dashboard.patientsDesc')],
+            ['reports', <FileText size={20} />, 'Reports', 'Send patient PDFs'],
+            ['settings', <Settings size={20} />, 'Settings', 'Google Review & Profile'],
+          ].map(([tab, icon, label, desc]) => (
+            <div key={tab} onClick={() => setActiveTab(tab)} style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.8rem 1rem', borderRadius: '12px', background: activeTab === tab ? 'var(--v0-blue)' : 'transparent', color: activeTab === tab ? 'white' : 'var(--text-secondary)', cursor: 'pointer', transition: 'background 0.15s' }}>
+              {icon}
+              <div>
+                <div style={{ fontWeight: 600, fontSize: '0.9rem', color: activeTab === tab ? 'white' : 'var(--text-main)', lineHeight: 1.2 }}>{label}</div>
+                <div style={{ fontSize: '0.75rem', opacity: 0.85 }}>{desc}</div>
+              </div>
             </div>
-          </div>
-          <div onClick={() => setActiveTab('upcoming')} style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.8rem 1rem', borderRadius: '12px', background: activeTab === 'upcoming' ? 'var(--v0-blue)' : 'transparent', color: activeTab === 'upcoming' ? 'white' : 'var(--text-secondary)', cursor: 'pointer' }}>
-            <Calendar size={20} /> 
-            <div>
-              <div style={{ fontWeight: 600, fontSize: '0.9rem', color: activeTab === 'upcoming' ? 'white' : 'var(--text-main)', lineHeight: 1.2 }}>{t('dashboard.appointments')}</div>
-              <div style={{ fontSize: '0.75rem', opacity: activeTab === 'upcoming' ? 0.9 : 1 }}>Upcoming Schedules</div>
-            </div>
-          </div>
-          <div onClick={() => setActiveTab('patients')} style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.8rem 1rem', borderRadius: '12px', background: activeTab === 'patients' ? 'var(--v0-blue)' : 'transparent', color: activeTab === 'patients' ? 'white' : 'var(--text-secondary)', cursor: 'pointer' }}>
-            <Users size={20} /> 
-            <div>
-              <div style={{ fontWeight: 600, fontSize: '0.9rem', color: activeTab === 'patients' ? 'white' : 'var(--text-main)', lineHeight: 1.2 }}>{t('dashboard.patients')}</div>
-              <div style={{ fontSize: '0.75rem', opacity: 0.9 }}>{t('dashboard.patientsDesc')}</div>
-            </div>
-          </div>
+          ))}
         </nav>
 
         {/* Support Box */}
@@ -639,7 +736,7 @@ const Dashboard = () => {
               </table>
             </div>
           </>
-        ) : (
+        ) : activeTab === 'patients' ? (
           <>
             {/* Patients Tab View */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '1.5rem' }}>
@@ -698,8 +795,107 @@ const Dashboard = () => {
               </table>
             </div>
           </>
-        )}
+        ) : activeTab === 'reports' ? (
+          <>
+            <div style={{ marginBottom: '1.5rem' }}>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-main)' }}>📋 Patient Reports</h2>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Select a patient to generate and send their medical report as a PDF via WhatsApp</p>
+            </div>
+            <div className="card" style={{ overflow: 'hidden' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                <thead>
+                  <tr style={{ background: '#f0f9ff', borderBottom: '1px solid var(--border-color)' }}>
+                    <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Patient</th>
+                    <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Phone</th>
+                    <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Visit Date</th>
+                    <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Status</th>
+                    <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.5px', textAlign: 'right' }}>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {appointments.length === 0 ? (
+                    <tr><td colSpan="5" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-secondary)' }}>No appointments found.</td></tr>
+                  ) : (
+                    [...appointments].sort((a, b) => new Date(b.appointment_time) - new Date(a.appointment_time)).map((apt) => (
+                      <tr key={apt.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                        <td style={{ padding: '1.25rem 1.5rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                            <div style={{ background: 'var(--v0-blue-light)', color: 'var(--v0-blue)', padding: '0.4rem', borderRadius: '50%' }}><User size={18} /></div>
+                            <span style={{ fontWeight: 600, color: 'var(--text-main)', fontSize: '0.95rem' }}>{apt.patient_name || 'Unknown'}</span>
+                          </div>
+                        </td>
+                        <td style={{ padding: '1.25rem 1.5rem', color: 'var(--text-main)', fontSize: '0.9rem' }}>{apt.phone_number}</td>
+                        <td style={{ padding: '1.25rem 1.5rem', color: 'var(--text-main)', fontSize: '0.9rem' }}>{new Date(apt.appointment_time).toLocaleDateString()}</td>
+                        <td style={{ padding: '1.25rem 1.5rem' }}>{renderBadge(apt.status)}</td>
+                        <td style={{ padding: '1.25rem 1.5rem', textAlign: 'right' }}>
+                          <button
+                            onClick={() => openReportModal(apt)}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', background: '#0ea5e9', color: 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '8px', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer' }}
+                          >
+                            <FileText size={15} /> Send Report
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
+        ) : activeTab === 'settings' ? (
+          <>
+            <div style={{ marginBottom: '1.5rem' }}>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-main)' }}>⚙️ Clinic Settings</h2>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Update your clinic profile and enable automatic Google Review collection after visits</p>
+            </div>
+            <div className="card" style={{ maxWidth: '600px', padding: '2rem' }}>
+              {!settingsLoaded ? (
+                <p style={{ color: 'var(--text-secondary)' }}>Loading settings…</p>
+              ) : (
+                <form onSubmit={handleSaveSettings} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.4rem', color: 'var(--text-main)' }}>Doctor Name</label>
+                    <input type="text" className="form-input" value={settings.doctor_name} onChange={e => setSettings(s => ({ ...s, doctor_name: e.target.value }))} placeholder="Dr. Ravi Sharma" />
+                    <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>Appears on the PDF report header</p>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.4rem', color: 'var(--text-main)' }}>Clinic Address</label>
+                    <input type="text" className="form-input" value={settings.clinic_address} onChange={e => setSettings(s => ({ ...s, clinic_address: e.target.value }))} placeholder="123 MG Road, Indore, MP" />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.4rem', color: 'var(--text-main)' }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><Star size={15} style={{ color: '#f59e0b' }} /> Google Review Link</span>
+                    </label>
+                    <input type="url" className="form-input" value={settings.google_review_link} onChange={e => setSettings(s => ({ ...s, google_review_link: e.target.value }))} placeholder="https://g.page/r/xxx/review" />
+                    <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>When set, patients receive this link automatically after their visit is marked <strong>Completed</strong></p>
+                    <div style={{ background: '#fefce8', border: '1px solid #fde047', borderRadius: '8px', padding: '0.75rem', marginTop: '0.5rem', fontSize: '0.8rem', color: '#713f12' }}>
+                      💡 To get your link: Go to <strong>Google Business Profile</strong> → Click "Ask for reviews" → Copy the link
+                    </div>
+                  </div>
+                  <button type="submit" disabled={settingsSaving} style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: '0.5rem', background: 'var(--v0-blue)', color: 'white', border: 'none', padding: '0.75rem 1.75rem', borderRadius: '8px', fontSize: '0.95rem', fontWeight: 600, cursor: settingsSaving ? 'not-allowed' : 'pointer', opacity: settingsSaving ? 0.7 : 1 }}>
+                    {settingsSaving ? 'Saving…' : '💾 Save Settings'}
+                  </button>
+                </form>
+              )}
+            </div>
+          </>
+        ) : null}
       </main>
+
+      {/* Toast Notification */}
+      {toast && (
+        <div style={{
+          position: 'fixed', bottom: '2rem', right: '2rem', zIndex: 2000,
+          background: toast.type === 'error' ? '#fee2e2' : '#dcfce7',
+          color: toast.type === 'error' ? '#991b1b' : '#166534',
+          border: `1px solid ${toast.type === 'error' ? '#fca5a5' : '#86efac'}`,
+          padding: '0.9rem 1.4rem', borderRadius: '12px', fontWeight: 600,
+          fontSize: '0.9rem', boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
+          maxWidth: '360px'
+        }}>
+          {toast.msg}
+        </div>
+      )}
 
       {/* Add Appointment Modal */}
       {isModalOpen && (
@@ -745,6 +941,97 @@ const Dashboard = () => {
               <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
                 <button type="button" onClick={() => setIsModalOpen(false)} className="btn-v0-outline" style={{ flex: 1, padding: '0.65rem', borderRadius: '6px' }}>{t('dashboard.modalBtnCancel')}</button>
                 <button type="submit" className="btn-v0-primary" style={{ flex: 1, padding: '0.65rem', borderRadius: '6px', border: 'none' }}>{t('dashboard.modalBtnBook')}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Send Report Modal */}
+      {reportModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}>
+          <div className="card" style={{ width: '100%', maxWidth: '640px', padding: '2rem', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <div>
+                <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-main)' }}>📋 Send Medical Report</h2>
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>For: <strong>{reportModal.patient_name}</strong> · {reportModal.phone_number}</p>
+              </div>
+              <button onClick={() => setReportModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '1.4rem' }}>✕</button>
+            </div>
+
+            <form onSubmit={handleSendReport} style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.3rem', color: 'var(--text-main)' }}>Patient Age</label>
+                  <input type="text" className="form-input" placeholder="e.g. 35" value={reportForm.patient_age} onChange={e => setReportForm(f => ({ ...f, patient_age: e.target.value }))} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.3rem', color: 'var(--text-main)' }}>Follow-up Date</label>
+                  <input type="date" className="form-input" value={reportForm.followup_date} onChange={e => setReportForm(f => ({ ...f, followup_date: e.target.value }))} />
+                </div>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.3rem', color: 'var(--text-main)' }}>Chief Complaint / Symptoms</label>
+                <textarea className="form-input" rows={2} placeholder="Patient's main complaints or symptoms" value={reportForm.chief_complaint} onChange={e => setReportForm(f => ({ ...f, chief_complaint: e.target.value }))} style={{ resize: 'vertical' }} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.3rem', color: 'var(--text-main)' }}>Diagnosis</label>
+                <textarea className="form-input" rows={2} placeholder="Clinical diagnosis" value={reportForm.diagnosis} onChange={e => setReportForm(f => ({ ...f, diagnosis: e.target.value }))} style={{ resize: 'vertical' }} />
+              </div>
+
+              {/* Medicines Table */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-main)' }}>Medicines / Prescription</label>
+                  <button type="button" onClick={addMedicineRow} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', background: 'var(--v0-blue-light)', color: 'var(--v0-blue)', border: 'none', padding: '0.3rem 0.7rem', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}>
+                    <Plus size={14} /> Add Row
+                  </button>
+                </div>
+                <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', overflow: 'hidden' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ background: '#f0f9ff' }}>
+                        {['Medicine', 'Dosage', 'Frequency', 'Duration', ''].map(h => (
+                          <th key={h} style={{ padding: '0.5rem 0.6rem', fontSize: '0.75rem', fontWeight: 700, color: '#0369a1', textAlign: 'left', textTransform: 'uppercase' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {reportForm.medicines.map((m, i) => (
+                        <tr key={i} style={{ borderTop: '1px solid var(--border-color)' }}>
+                          {['name', 'dosage', 'frequency', 'duration'].map(field => (
+                            <td key={field} style={{ padding: '0.35rem 0.4rem' }}>
+                              <input
+                                type="text"
+                                value={m[field]}
+                                onChange={e => updateMedicineRow(i, field, e.target.value)}
+                                placeholder={field === 'name' ? 'Paracetamol' : field === 'dosage' ? '500mg' : field === 'frequency' ? '3x/day' : '5 days'}
+                                style={{ width: '100%', padding: '0.3rem 0.5rem', border: '1px solid var(--border-color)', borderRadius: '5px', fontSize: '0.82rem', background: 'var(--bg-main)', color: 'var(--text-main)', outline: 'none' }}
+                              />
+                            </td>
+                          ))}
+                          <td style={{ padding: '0.35rem 0.4rem', textAlign: 'center' }}>
+                            {reportForm.medicines.length > 1 && (
+                              <button type="button" onClick={() => removeMedicineRow(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--v0-red)' }}><Minus size={15} /></button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.3rem', color: 'var(--text-main)' }}>Special Instructions (optional)</label>
+                <textarea className="form-input" rows={2} placeholder="Any special notes or instructions for the patient" value={reportForm.special_notes} onChange={e => setReportForm(f => ({ ...f, special_notes: e.target.value }))} style={{ resize: 'vertical' }} />
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
+                <button type="button" onClick={() => setReportModal(null)} className="btn-v0-outline" style={{ flex: 1, padding: '0.75rem', borderRadius: '8px' }}>Cancel</button>
+                <button type="submit" disabled={reportSending} style={{ flex: 2, padding: '0.75rem', borderRadius: '8px', background: '#0ea5e9', color: 'white', border: 'none', fontWeight: 700, fontSize: '0.95rem', cursor: reportSending ? 'not-allowed' : 'pointer', opacity: reportSending ? 0.7 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+                  <Send size={16} /> {reportSending ? 'Generating & Sending…' : 'Generate PDF & Send via WhatsApp'}
+                </button>
               </div>
             </form>
           </div>

@@ -1,4 +1,5 @@
 import os
+import io
 import hmac
 import hashlib
 import requests
@@ -585,6 +586,236 @@ def send_whatsapp_template(to_phone: str, template_name: str, language_code: str
         print(f"Attempting fallback to text message for {to_phone}...")
         send_whatsapp_message(to_phone, fallback_msg)
 
+# ---------- PDF Report Generation ----------
+
+def generate_patient_report_pdf(report_data: dict, clinic_data: dict) -> bytes:
+    """
+    Generates a professional medical report PDF using ReportLab.
+    Returns the PDF as raw bytes.
+    """
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import cm
+    from reportlab.lib import colors
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=A4,
+        rightMargin=2 * cm,
+        leftMargin=2 * cm,
+        topMargin=2 * cm,
+        bottomMargin=2 * cm,
+    )
+
+    styles = getSampleStyleSheet()
+    brand_blue = colors.HexColor("#1a6eb0")
+    light_blue = colors.HexColor("#e8f4fd")
+    dark_gray = colors.HexColor("#333333")
+    mid_gray = colors.HexColor("#666666")
+
+    h1 = ParagraphStyle("h1", parent=styles["Normal"], fontSize=20, textColor=brand_blue,
+                        fontName="Helvetica-Bold", alignment=TA_CENTER, spaceAfter=4)
+    h2 = ParagraphStyle("h2", parent=styles["Normal"], fontSize=11, textColor=brand_blue,
+                        fontName="Helvetica-Bold", spaceBefore=10, spaceAfter=4)
+    label = ParagraphStyle("label", parent=styles["Normal"], fontSize=9,
+                           textColor=mid_gray, fontName="Helvetica")
+    value = ParagraphStyle("value", parent=styles["Normal"], fontSize=10,
+                           textColor=dark_gray, fontName="Helvetica")
+    center = ParagraphStyle("center", parent=styles["Normal"], fontSize=8,
+                            textColor=mid_gray, alignment=TA_CENTER)
+
+    clinic_name = clinic_data.get("business_name", "Clinic")
+    doctor_name = clinic_data.get("doctor_name") or "Attending Doctor"
+    clinic_address = clinic_data.get("clinic_address") or ""
+
+    story = []
+
+    # Header block
+    header_data = [
+        [
+            Paragraph(f"<b>{clinic_name}</b>", h1),
+            Paragraph(
+                f"<b>Dr. {doctor_name}</b><br/>"
+                + (f"<font color='#666666' size='8'>{clinic_address}</font>" if clinic_address else ""),
+                ParagraphStyle("right", parent=styles["Normal"], fontSize=10,
+                               fontName="Helvetica", alignment=TA_LEFT)
+            )
+        ]
+    ]
+    header_table = Table(header_data, colWidths=[9 * cm, 8 * cm])
+    header_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), light_blue),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 12),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+        ("TOPPADDING", (0, 0), (-1, -1), 10),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+        ("ROUNDEDCORNERS", [6, 6, 6, 6]),
+    ]))
+    story.append(header_table)
+    story.append(Spacer(1, 0.4 * cm))
+    story.append(HRFlowable(width="100%", thickness=2, color=brand_blue))
+    story.append(Spacer(1, 0.3 * cm))
+
+    story.append(Paragraph("PATIENT MEDICAL REPORT", ParagraphStyle(
+        "title", parent=styles["Normal"], fontSize=14, textColor=brand_blue,
+        fontName="Helvetica-Bold", alignment=TA_CENTER, spaceAfter=6
+    )))
+    story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#aaaaaa")))
+    story.append(Spacer(1, 0.3 * cm))
+
+    # Patient info 2-column
+    visit_date = report_data.get("visit_date") or get_now().strftime("%d %b %Y")
+    info_data = [
+        [
+            Paragraph("<b>Patient:</b>", label), Paragraph(report_data.get("patient_name", "—"), value),
+            Paragraph("<b>Visit Date:</b>", label), Paragraph(visit_date, value),
+        ],
+        [
+            Paragraph("<b>Age:</b>", label), Paragraph(str(report_data.get("patient_age") or "—"), value),
+            Paragraph("<b>Phone:</b>", label), Paragraph(report_data.get("phone_number", "—"), value),
+        ],
+    ]
+    info_table = Table(info_data, colWidths=[3 * cm, 5.5 * cm, 3 * cm, 5.5 * cm])
+    info_table.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    story.append(info_table)
+    story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#dddddd")))
+    story.append(Spacer(1, 0.2 * cm))
+
+    # Chief Complaint & Diagnosis
+    story.append(Paragraph("Chief Complaint", h2))
+    story.append(Paragraph(report_data.get("chief_complaint") or "—", value))
+    story.append(Spacer(1, 0.2 * cm))
+
+    story.append(Paragraph("Diagnosis", h2))
+    story.append(Paragraph(report_data.get("diagnosis") or "—", value))
+    story.append(Spacer(1, 0.3 * cm))
+    story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#dddddd")))
+
+    # Prescription table
+    story.append(Paragraph("Prescription", h2))
+    medicines = report_data.get("medicines") or []
+    if medicines:
+        med_table_data = [["Medicine", "Dosage", "Frequency", "Duration"]]
+        for m in medicines:
+            med_table_data.append([
+                m.get("name", ""), m.get("dosage", ""),
+                m.get("frequency", ""), m.get("duration", ""),
+            ])
+        med_table = Table(med_table_data, colWidths=[5 * cm, 3 * cm, 4 * cm, 5 * cm])
+        med_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), brand_blue),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, 0), 9),
+            ("FONTSIZE", (0, 1), (-1, -1), 9),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, light_blue]),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cccccc")),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ]))
+        story.append(med_table)
+    else:
+        story.append(Paragraph("No medicines prescribed.", value))
+
+    story.append(Spacer(1, 0.3 * cm))
+    story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#dddddd")))
+
+    # Follow-up & Notes
+    story.append(Paragraph("Follow-up Date", h2))
+    story.append(Paragraph(report_data.get("followup_date") or "No follow-up required", value))
+
+    if report_data.get("special_notes"):
+        story.append(Spacer(1, 0.2 * cm))
+        story.append(Paragraph("Special Instructions", h2))
+        story.append(Paragraph(report_data["special_notes"], value))
+
+    story.append(Spacer(1, 0.5 * cm))
+    story.append(HRFlowable(width="100%", thickness=1.5, color=brand_blue))
+    story.append(Spacer(1, 0.2 * cm))
+    story.append(Paragraph("Powered by ClinicOS · This is a computer-generated report.", center))
+
+    doc.build(story)
+    return buf.getvalue()
+
+
+def upload_media_to_meta(pdf_bytes: bytes, filename: str = "report.pdf") -> str | None:
+    """
+    Uploads a PDF to Meta's hosted media endpoint.
+    Returns the media_id string, or None on failure.
+    """
+    if not META_ACCESS_TOKEN or not META_PHONE_NUMBER_ID:
+        print("WARNING: Meta API keys missing. Cannot upload media.")
+        return None
+    url = f"https://graph.facebook.com/v18.0/{META_PHONE_NUMBER_ID}/media"
+    headers = {"Authorization": f"Bearer {META_ACCESS_TOKEN}"}
+    files = {
+        "file": (filename, io.BytesIO(pdf_bytes), "application/pdf"),
+        "messaging_product": (None, "whatsapp"),
+        "type": (None, "application/pdf"),
+    }
+    try:
+        resp = requests.post(url, headers=headers, files=files)
+        if resp.status_code == 200:
+            return resp.json().get("id")
+        print(f"Meta media upload failed ({resp.status_code}): {resp.text}")
+    except Exception as e:
+        print(f"Exception uploading media: {e}")
+    return None
+
+
+def send_whatsapp_document(to_phone: str, media_id: str, filename: str, caption: str = ""):
+    """Sends a document message via Meta Graph API using an already-uploaded media_id."""
+    if not META_ACCESS_TOKEN or not META_PHONE_NUMBER_ID:
+        print("WARNING: Meta API keys missing. Document not sent.")
+        return
+    url = f"https://graph.facebook.com/v18.0/{META_PHONE_NUMBER_ID}/messages"
+    headers = {
+        "Authorization": f"Bearer {META_ACCESS_TOKEN}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": to_phone,
+        "type": "document",
+        "document": {
+            "id": media_id,
+            "filename": filename,
+            "caption": caption,
+        },
+    }
+    resp = requests.post(url, headers=headers, json=payload)
+    if resp.status_code != 200:
+        print(f"ERROR sending WhatsApp document: {resp.text}")
+
+
+def send_google_review_request(to_phone: str, patient_name: str, clinic_name: str, review_link: str):
+    """Sends a warm 2-part WhatsApp message asking the patient for a Google review."""
+    first_name = (patient_name or "there").split()[0]
+    msg1 = (
+        f"\U0001f64f Thank you for visiting *{clinic_name}* today, {first_name}!\n\n"
+        "We hope you're feeling better soon. "
+        "Your feedback means the world to us and helps other patients find quality care. \U0001f31f"
+    )
+    msg2 = (
+        "\u2b50 If you had a good experience, please take 30 seconds to leave us a "
+        "Google review \u2014 it helps us a lot!\n\n"
+        f"\U0001f449 {review_link}\n\n"
+        "Thank you so much! \U0001f499"
+    )
+    send_whatsapp_message(to_phone, msg1)
+    send_whatsapp_message(to_phone, msg2)
+
+
 # 4. Webhook Handshake (GET) for Meta Verification
 @app.get("/webhook")
 async def verify_webhook(request: Request):
@@ -676,7 +907,7 @@ class StatusUpdateRequest(BaseModel):
     status: str
 
 @app.put("/api/admin/appointments/{appointment_id}/status")
-async def update_appointment_status(appointment_id: str, req: StatusUpdateRequest):
+async def update_appointment_status(appointment_id: str, req: StatusUpdateRequest, background_tasks: BackgroundTasks):
     """Updates appointment status and sends automated WhatsApp messages."""
     try:
         # 1. Fetch appointment details to get patient phone and clinic_id
@@ -687,6 +918,7 @@ async def update_appointment_status(appointment_id: str, req: StatusUpdateReques
             
         apt = apt_response.data[0]
         patient_phone = apt["phone_number"]
+        patient_name = apt.get("patient_name", "")
         clinic_id = apt["clinic_id"]
         
         if req.status == "cancelled":
@@ -696,9 +928,13 @@ async def update_appointment_status(appointment_id: str, req: StatusUpdateReques
         
         # 3. Trigger WhatsApp template messages based on new status
         if req.status == 'completed' or req.status == 'cancelled':
-            # Fetch clinic name dynamically for the template
-            clinic_resp = supabase.table("clinics").select("business_name").eq("id", clinic_id).execute()
-            clinic_name = clinic_resp.data[0]["business_name"] if clinic_resp.data else "our clinic"
+            # Fetch clinic data (name + google review link)
+            clinic_resp = supabase.table("clinics").select(
+                "business_name, google_review_link"
+            ).eq("id", clinic_id).execute()
+            clinic_row = clinic_resp.data[0] if clinic_resp.data else {}
+            clinic_name = clinic_row.get("business_name") or "our clinic"
+            google_review_link = clinic_row.get("google_review_link")
             
             # Send Meta Template Message
             if META_ACCESS_TOKEN and META_PHONE_NUMBER_ID:
@@ -736,11 +972,147 @@ async def update_appointment_status(appointment_id: str, req: StatusUpdateReques
                 # Fire and forget
                 requests.post(url, headers=headers, json=payload)
                 print(f"Sent '{template_name}' template to {patient_phone}")
+
+            # NEW: Auto-send Google Review request when appointment is completed
+            if req.status == 'completed' and google_review_link:
+                background_tasks.add_task(
+                    send_google_review_request,
+                    patient_phone,
+                    patient_name,
+                    clinic_name,
+                    google_review_link,
+                )
+                print(f"Scheduled Google review request to {patient_phone}")
                 
         return {"status": "success", "message": f"Status updated to {req.status}"}
     except Exception as e:
         from fastapi.responses import JSONResponse
         return JSONResponse(status_code=500, content={"detail": str(e)})
+
+# ---------- Report Sending Endpoint ----------
+
+class MedicineItem(BaseModel):
+    name: str
+    dosage: str = ""
+    frequency: str = ""
+    duration: str = ""
+
+class SendReportRequest(BaseModel):
+    appointment_id: str
+    patient_age: str = ""
+    chief_complaint: str = ""
+    diagnosis: str = ""
+    medicines: list = []  # list of MedicineItem dicts
+    followup_date: str = ""
+    special_notes: str = ""
+
+@app.post("/api/reports/send")
+async def send_patient_report(req: SendReportRequest):
+    """Generates a PDF medical report and sends it to the patient via WhatsApp."""
+    from fastapi.responses import JSONResponse
+    try:
+        # 1. Fetch appointment details
+        apt_resp = supabase.table("appointments").select(
+            "phone_number, patient_name, clinic_id, appointment_time"
+        ).eq("id", req.appointment_id).limit(1).execute()
+        if not apt_resp.data:
+            return JSONResponse(status_code=404, content={"detail": "Appointment not found"})
+        apt = apt_resp.data[0]
+
+        # 2. Fetch clinic details
+        clinic_resp = supabase.table("clinics").select(
+            "business_name, doctor_name, clinic_address"
+        ).eq("id", apt["clinic_id"]).limit(1).execute()
+        clinic_data = clinic_resp.data[0] if clinic_resp.data else {}
+
+        visit_date = str(apt.get("appointment_time", ""))[:10]
+        try:
+            from datetime import datetime as dt
+            visit_date = dt.strptime(visit_date, "%Y-%m-%d").strftime("%d %b %Y")
+        except Exception:
+            pass
+
+        report_data = {
+            "patient_name": apt.get("patient_name") or "Patient",
+            "phone_number": apt.get("phone_number", ""),
+            "patient_age": req.patient_age,
+            "visit_date": visit_date,
+            "chief_complaint": req.chief_complaint,
+            "diagnosis": req.diagnosis,
+            "medicines": req.medicines,
+            "followup_date": req.followup_date,
+            "special_notes": req.special_notes,
+        }
+
+        # 3. Generate PDF
+        pdf_bytes = generate_patient_report_pdf(report_data, clinic_data)
+
+        # 4. Upload to Meta media endpoint
+        patient_name_safe = (apt.get("patient_name") or "patient").replace(" ", "_")
+        filename = f"report_{patient_name_safe}_{visit_date.replace(' ', '_')}.pdf"
+        media_id = upload_media_to_meta(pdf_bytes, filename)
+
+        if not media_id:
+            return JSONResponse(status_code=502, content={"detail": "Failed to upload PDF to WhatsApp. Check Meta API keys."})
+
+        # 5. Send the document via WhatsApp
+        caption = f"\U0001f4cb Your medical report from *{clinic_data.get('business_name', 'your clinic')}*. Please keep this for your records."
+        send_whatsapp_document(apt["phone_number"], media_id, filename, caption)
+
+        # 6. Save to patient_reports table (audit trail)
+        supabase.table("patient_reports").insert({
+            "clinic_id": apt["clinic_id"],
+            "appointment_id": req.appointment_id,
+            "phone_number": apt["phone_number"],
+            "patient_name": apt.get("patient_name"),
+            "patient_age": req.patient_age,
+            "doctor_name": clinic_data.get("doctor_name"),
+            "chief_complaint": req.chief_complaint,
+            "diagnosis": req.diagnosis,
+            "medicines": req.medicines,
+            "followup_date": req.followup_date,
+            "special_notes": req.special_notes,
+        }).execute()
+
+        return {
+            "status": "success",
+            "message": f"Report sent to {apt['phone_number']}",
+            "patient_name": apt.get("patient_name"),
+        }
+    except Exception as e:
+        print(f"Error sending report: {e}")
+        return JSONResponse(status_code=500, content={"detail": str(e)})
+
+
+# ---------- Clinic Settings Endpoint ----------
+
+class ClinicSettingsRequest(BaseModel):
+    google_review_link: str = ""
+    doctor_name: str = ""
+    clinic_address: str = ""
+
+@app.patch("/api/clinics/{clinic_id}/settings")
+async def update_clinic_settings(clinic_id: str, req: ClinicSettingsRequest):
+    """Updates editable clinic profile settings from the Dashboard."""
+    from fastapi.responses import JSONResponse
+    try:
+        update_data = {}
+        if req.google_review_link is not None:
+            update_data["google_review_link"] = req.google_review_link or None
+        if req.doctor_name is not None:
+            update_data["doctor_name"] = req.doctor_name or None
+        if req.clinic_address is not None:
+            update_data["clinic_address"] = req.clinic_address or None
+
+        if not update_data:
+            return {"status": "success", "message": "Nothing to update."}
+
+        supabase.table("clinics").update(update_data).eq("id", clinic_id).execute()
+        return {"status": "success", "message": "Clinic settings updated."}
+    except Exception as e:
+        print(f"Error updating clinic settings: {e}")
+        return JSONResponse(status_code=500, content={"detail": str(e)})
+
 
 # 5. Webhook Ingestion (POST) for WhatsApp Messages (Secured with Signature check)
 
