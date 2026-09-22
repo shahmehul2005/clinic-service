@@ -552,7 +552,7 @@ def send_whatsapp_message(to_phone: str, message: str):
     if response.status_code != 200:
         print(f"ERROR sending WhatsApp message: {response.text}")
 
-def send_whatsapp_template(to_phone: str, template_name: str, components: list = None, language_code: str = "en_US"):
+def send_whatsapp_template(to_phone: str, template_name: str, components: list = None, language_code: str = "en"):
     """Sends a pre-approved template message via Meta Graph API."""
     if not META_ACCESS_TOKEN or not META_PHONE_NUMBER_ID:
         print("WARNING: Meta API keys are missing. Template not sent.")
