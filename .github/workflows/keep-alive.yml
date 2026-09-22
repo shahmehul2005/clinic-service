@@ -1,0 +1,52 @@
+name: Keep Services Alive
+
+on:
+  schedule:
+    # Ping Render every 10 minutes during clinic hours
+    # UTC 2:30 AM - 4:30 PM = IST 8:00 AM - 10:00 PM
+    # Cron doesn't support half-hour offsets, so we cover UTC 2-16 (IST ~7:30 AM - 10:30 PM)
+    - cron: '*/10 2-16 * * *'
+
+    # Ping Supabase once daily at 6:00 AM UTC (11:30 AM IST)
+    - cron: '0 6 * * *'
+
+  # Allow manual trigger for testing
+  workflow_dispatch:
+
+jobs:
+  ping-render:
+    runs-on: ubuntu-latest
+    # Run on every trigger (both cron schedules and manual)
+    steps:
+      - name: Ping Render Backend
+        run: |
+          echo "Pinging Render backend to prevent spin-down..."
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            --max-time 120 \
+            "${{ secrets.RENDER_BACKEND_URL }}/health" || true)
+          echo "Response status: $HTTP_STATUS"
+          if [ "$HTTP_STATUS" = "200" ]; then
+            echo "✅ Render backend is alive"
+          else
+            echo "⚠️ Render backend returned status $HTTP_STATUS (may be cold-starting)"
+          fi
+
+  ping-supabase:
+    runs-on: ubuntu-latest
+    # Only run on the daily 6 AM UTC schedule or manual trigger
+    if: github.event.schedule == '0 6 * * *' || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Ping Supabase
+        run: |
+          echo "Pinging Supabase to prevent 7-day inactivity pause..."
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            --max-time 30 \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            "${{ secrets.SUPABASE_URL }}/rest/v1/clinics?select=id&limit=1")
+          echo "Response status: $HTTP_STATUS"
+          if [ "$HTTP_STATUS" = "200" ]; then
+            echo "✅ Supabase is alive"
+          else
+            echo "⚠️ Supabase returned status $HTTP_STATUS"
+          fi

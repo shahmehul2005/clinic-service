@@ -832,6 +832,12 @@ def send_google_review_request(to_phone: str, patient_name: str, clinic_name: st
     send_whatsapp_template(to_phone, "google_review_request", components)
 
 
+# Health check endpoint for keepalive pings (Render free-tier spin-down prevention)
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}
+
+
 # 4. Webhook Handshake (GET) for Meta Verification
 @app.get("/webhook")
 async def verify_webhook(request: Request):
@@ -1227,7 +1233,7 @@ def api_call_next(req: CallNextRequest, bg_tasks: BackgroundTasks):
         resp2 = supabase.table("appointments").select("phone_number").eq("clinic_id", req.clinic_id).eq("token_number", target_token).order("created_at", desc=True).limit(1).execute()
         if resp2.data:
             components = [{"type": "body", "parameters": [{"type": "text", "text": str(target_token)}]}]
-            bg_tasks.add_task(send_whatsapp_template, resp2.data[0]["phone_number"], "token_alert", components)
+            bg_tasks.add_task(send_whatsapp_template, resp2.data[0]["phone_number"], "queue_turn_alert", components)
             
         return {"status": "success", "new_token": new_token}
     except Exception as e:
