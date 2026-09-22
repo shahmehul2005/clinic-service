@@ -448,8 +448,8 @@ const Dashboard = () => {
             ['overview', <HomeIcon size={20} />, t('dashboard.overview'), t('dashboard.overviewDesc')],
             ['upcoming', <Calendar size={20} />, t('dashboard.appointments'), 'Upcoming Schedules'],
             ['patients', <Users size={20} />, t('dashboard.patients'), t('dashboard.patientsDesc')],
-            ['reports', <FileText size={20} />, 'Reports', 'Send patient PDFs'],
-            ['settings', <Settings size={20} />, 'Settings', 'Google Review & Profile'],
+            ['reports', <FileText size={20} />, t('dashboard.reports'), t('dashboard.reportsDesc')],
+            ['settings', <Settings size={20} />, t('dashboard.settings'), t('dashboard.settingsDesc')],
           ].map(([tab, icon, label, desc]) => (
             <div key={tab} onClick={() => setActiveTab(tab)} style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.8rem 1rem', borderRadius: '12px', background: activeTab === tab ? 'var(--v0-blue)' : 'transparent', color: activeTab === tab ? 'white' : 'var(--text-secondary)', cursor: 'pointer', transition: 'background 0.15s' }}>
               {icon}
@@ -798,25 +798,33 @@ const Dashboard = () => {
         ) : activeTab === 'reports' ? (
           <>
             <div style={{ marginBottom: '1.5rem' }}>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-main)' }}>📋 Patient Reports</h2>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Select a patient to generate and send their medical report as a PDF via WhatsApp</p>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-main)' }}>📋 {t('dashboard.reportsTitle')}</h2>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>{t('dashboard.reportsSub')}</p>
             </div>
             <div className="card" style={{ overflow: 'hidden' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                 <thead>
                   <tr style={{ background: '#f0f9ff', borderBottom: '1px solid var(--border-color)' }}>
-                    <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Patient</th>
-                    <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Phone</th>
-                    <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Visit Date</th>
-                    <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Status</th>
-                    <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.5px', textAlign: 'right' }}>Action</th>
+                    <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{t('dashboard.thName')}</th>
+                    <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{t('dashboard.thPhone')}</th>
+                    <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{t('dashboard.thVisitDate')}</th>
+                    <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{t('dashboard.thStatus')}</th>
+                    <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.5px', textAlign: 'right' }}>{t('dashboard.thAction')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {appointments.length === 0 ? (
-                    <tr><td colSpan="5" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-secondary)' }}>No appointments found.</td></tr>
+                    <tr><td colSpan="5" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-secondary)' }}>{t('dashboard.noReports')}</td></tr>
                   ) : (
-                    [...appointments].sort((a, b) => new Date(b.appointment_time) - new Date(a.appointment_time)).map((apt) => (
+                    // Deduplicate: show only the most recent appointment per unique phone number
+                    Object.values(
+                      [...appointments]
+                        .sort((a, b) => new Date(b.appointment_time) - new Date(a.appointment_time))
+                        .reduce((acc, apt) => {
+                          if (!acc[apt.phone_number]) acc[apt.phone_number] = apt;
+                          return acc;
+                        }, {})
+                    ).map((apt) => (
                       <tr key={apt.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
                         <td style={{ padding: '1.25rem 1.5rem' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -832,7 +840,7 @@ const Dashboard = () => {
                             onClick={() => openReportModal(apt)}
                             style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', background: '#0ea5e9', color: 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '8px', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer' }}
                           >
-                            <FileText size={15} /> Send Report
+                            <FileText size={15} /> {t('dashboard.sendReportBtn')}
                           </button>
                         </td>
                       </tr>
@@ -845,35 +853,35 @@ const Dashboard = () => {
         ) : activeTab === 'settings' ? (
           <>
             <div style={{ marginBottom: '1.5rem' }}>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-main)' }}>⚙️ Clinic Settings</h2>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Update your clinic profile and enable automatic Google Review collection after visits</p>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-main)' }}>⚙️ {t('dashboard.settingsTitle')}</h2>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>{t('dashboard.settingsSub')}</p>
             </div>
             <div className="card" style={{ maxWidth: '600px', padding: '2rem' }}>
               {!settingsLoaded ? (
-                <p style={{ color: 'var(--text-secondary)' }}>Loading settings…</p>
+                <p style={{ color: 'var(--text-secondary)' }}>{t('dashboard.settingsLoading')}</p>
               ) : (
                 <form onSubmit={handleSaveSettings} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.4rem', color: 'var(--text-main)' }}>Doctor Name</label>
-                    <input type="text" className="form-input" value={settings.doctor_name} onChange={e => setSettings(s => ({ ...s, doctor_name: e.target.value }))} placeholder="Dr. Ravi Sharma" />
-                    <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>Appears on the PDF report header</p>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.4rem', color: 'var(--text-main)' }}>{t('dashboard.settingsDoctorName')}</label>
+                    <input type="text" className="form-input" value={settings.doctor_name} onChange={e => setSettings(s => ({ ...s, doctor_name: e.target.value }))} placeholder={t('dashboard.settingsDoctorNamePh')} />
+                    <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>{t('dashboard.settingsDoctorNameHint')}</p>
                   </div>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.4rem', color: 'var(--text-main)' }}>Clinic Address</label>
-                    <input type="text" className="form-input" value={settings.clinic_address} onChange={e => setSettings(s => ({ ...s, clinic_address: e.target.value }))} placeholder="123 MG Road, Indore, MP" />
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.4rem', color: 'var(--text-main)' }}>{t('dashboard.settingsAddress')}</label>
+                    <input type="text" className="form-input" value={settings.clinic_address} onChange={e => setSettings(s => ({ ...s, clinic_address: e.target.value }))} placeholder={t('dashboard.settingsAddressPh')} />
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.4rem', color: 'var(--text-main)' }}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><Star size={15} style={{ color: '#f59e0b' }} /> Google Review Link</span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><Star size={15} style={{ color: '#f59e0b' }} /> {t('dashboard.settingsReviewLink')}</span>
                     </label>
-                    <input type="url" className="form-input" value={settings.google_review_link} onChange={e => setSettings(s => ({ ...s, google_review_link: e.target.value }))} placeholder="https://g.page/r/xxx/review" />
-                    <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>When set, patients receive this link automatically after their visit is marked <strong>Completed</strong></p>
+                    <input type="url" className="form-input" value={settings.google_review_link} onChange={e => setSettings(s => ({ ...s, google_review_link: e.target.value }))} placeholder={t('dashboard.settingsReviewLinkPh')} />
+                    <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>{t('dashboard.settingsReviewLinkHint')} <strong>Completed</strong></p>
                     <div style={{ background: '#fefce8', border: '1px solid #fde047', borderRadius: '8px', padding: '0.75rem', marginTop: '0.5rem', fontSize: '0.8rem', color: '#713f12' }}>
-                      💡 To get your link: Go to <strong>Google Business Profile</strong> → Click "Ask for reviews" → Copy the link
+                      {t('dashboard.settingsReviewLinkTip')}
                     </div>
                   </div>
                   <button type="submit" disabled={settingsSaving} style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: '0.5rem', background: 'var(--v0-blue)', color: 'white', border: 'none', padding: '0.75rem 1.75rem', borderRadius: '8px', fontSize: '0.95rem', fontWeight: 600, cursor: settingsSaving ? 'not-allowed' : 'pointer', opacity: settingsSaving ? 0.7 : 1 }}>
-                    {settingsSaving ? 'Saving…' : '💾 Save Settings'}
+                    {settingsSaving ? t('dashboard.settingsSaving') : `💾 ${t('dashboard.settingsSaveBtn')}`}
                   </button>
                 </form>
               )}
