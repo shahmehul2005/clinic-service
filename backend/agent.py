@@ -558,6 +558,13 @@ def send_whatsapp_template(to_phone: str, template_name: str, components: list =
         print("WARNING: Meta API keys are missing. Template not sent.")
         return
 
+    # Sanitize phone number: Meta requires E.164 format without + or spaces
+    # e.g., "91XXXXXXXXXX" not "+91XXXXXXXXXX" or "91-XX-XXXX-XXXX"
+    sanitized_phone = ''.join(filter(str.isdigit, to_phone))
+    if not sanitized_phone:
+        print(f"ERROR: Invalid phone number '{to_phone}' - cannot send template.")
+        return
+
     url = f"https://graph.facebook.com/v18.0/{META_PHONE_NUMBER_ID}/messages"
     headers = {
         "Authorization": f"Bearer {META_ACCESS_TOKEN}",
@@ -566,7 +573,7 @@ def send_whatsapp_template(to_phone: str, template_name: str, components: list =
     payload = {
         "messaging_product": "whatsapp",
         "recipient_type": "individual",
-        "to": to_phone,
+        "to": sanitized_phone,
         "type": "template",
         "template": {
             "name": template_name,
@@ -578,15 +585,13 @@ def send_whatsapp_template(to_phone: str, template_name: str, components: list =
     if components:
         payload["template"]["components"] = components
     
+    print(f"[WA] Sending template '{template_name}' to {sanitized_phone}...")
+    print(f"[WA] Payload: {payload}")
     response = requests.post(url, headers=headers, json=payload)
+    print(f"[WA] Response status: {response.status_code}")
+    print(f"[WA] Response body: {response.text}")
     if response.status_code != 200:
-        print(f"ERROR sending WhatsApp template: {response.text}")
-        # Fallback to standard text message if the template fails (e.g., due to language mismatch or review status)
-        fallback_msg = "Your appointment has been cancelled. Thank you."
-        if template_name == "visit_thanks":
-            fallback_msg = "Thank you for visiting! We hope you have a great day."
-        print(f"Attempting fallback to text message for {to_phone}...")
-        send_whatsapp_message(to_phone, fallback_msg)
+        print(f"ERROR sending WhatsApp template '{template_name}' to {sanitized_phone}: {response.text}")
 
 # ---------- PDF Report Generation ----------
 
