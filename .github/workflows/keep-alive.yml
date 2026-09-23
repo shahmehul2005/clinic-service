@@ -31,6 +31,22 @@ jobs:
             echo "⚠️ Render backend returned status $HTTP_STATUS (may be cold-starting)"
           fi
 
+      - name: Send Appointment Reminders
+        run: |
+          echo "Triggering appointment reminders..."
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -d "{\"pin\": \"${{ secrets.ADMIN_PIN }}\"}" \
+            --max-time 120 \
+            "${{ secrets.RENDER_BACKEND_URL }}/api/internal/send-reminders" || true)
+          echo "Response status: $HTTP_STATUS"
+          if [ "$HTTP_STATUS" = "200" ]; then
+            echo "✅ Reminders triggered successfully"
+          else
+            echo "⚠️ Reminder trigger returned status $HTTP_STATUS"
+          fi
+
   ping-supabase:
     runs-on: ubuntu-latest
     # Only run on the daily 6 AM UTC schedule or manual trigger
