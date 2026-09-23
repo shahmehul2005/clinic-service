@@ -38,7 +38,7 @@ const Dashboard = () => {
   const [toast, setToast] = useState(null);
 
   // Settings state
-  const [settings, setSettings] = useState({ google_review_link: '', doctor_name: '', clinic_address: '' });
+  const [settings, setSettings] = useState({ google_review_link: '', doctor_name: '', clinic_address: '', maps_link: '', consultation_fee: '' });
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   
@@ -57,7 +57,7 @@ const Dashboard = () => {
     const fetchClinicData = async () => {
       const { data, error } = await supabase
         .from('clinics')
-        .select('business_name, trial_end_date, booking_mode, current_serving_token, google_review_link, doctor_name, clinic_address')
+        .select('business_name, trial_end_date, booking_mode, current_serving_token, google_review_link, doctor_name, clinic_address, maps_link, consultation_fee')
         .eq('id', clinicId)
         .single();
         
@@ -72,6 +72,8 @@ const Dashboard = () => {
           google_review_link: data.google_review_link || '',
           doctor_name: data.doctor_name || '',
           clinic_address: data.clinic_address || '',
+          maps_link: data.maps_link || '',
+          consultation_fee: data.consultation_fee || '',
         });
         setSettingsLoaded(true);
       }
@@ -338,10 +340,25 @@ const Dashboard = () => {
     setReportSending(true);
     try {
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      
+      const formData = new FormData();
+      formData.append("appointment_id", reportModal.id);
+      formData.append("patient_age", reportForm.patient_age);
+      formData.append("chief_complaint", reportForm.chief_complaint);
+      formData.append("diagnosis", reportForm.diagnosis);
+      formData.append("followup_date", reportForm.followup_date);
+      formData.append("special_notes", reportForm.special_notes);
+      
+      const validMedicines = reportForm.medicines.filter(m => m.name.trim() !== '');
+      formData.append("medicines", JSON.stringify(validMedicines));
+      
+      if (reportForm.image) {
+        formData.append("image", reportForm.image);
+      }
+
       const resp = await fetch(`${apiUrl}/api/reports/send`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ appointment_id: reportModal.id, ...reportForm })
+        body: formData
       });
       const data = await resp.json();
       if (resp.ok) {
@@ -880,6 +897,14 @@ const Dashboard = () => {
                       {t('dashboard.settingsReviewLinkTip')}
                     </div>
                   </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.4rem', color: 'var(--text-main)' }}>Google Maps Link (for Location)</label>
+                    <input type="url" className="form-input" value={settings.maps_link} onChange={e => setSettings(s => ({ ...s, maps_link: e.target.value }))} placeholder="https://maps.google.com/..." />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.4rem', color: 'var(--text-main)' }}>Consultation Fee</label>
+                    <input type="text" className="form-input" value={settings.consultation_fee} onChange={e => setSettings(s => ({ ...s, consultation_fee: e.target.value }))} placeholder="e.g. ₹500" />
+                  </div>
                   <button type="submit" disabled={settingsSaving} style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: '0.5rem', background: 'var(--v0-blue)', color: 'white', border: 'none', padding: '0.75rem 1.75rem', borderRadius: '8px', fontSize: '0.95rem', fontWeight: 600, cursor: settingsSaving ? 'not-allowed' : 'pointer', opacity: settingsSaving ? 0.7 : 1 }}>
                     {settingsSaving ? t('dashboard.settingsSaving') : `💾 ${t('dashboard.settingsSaveBtn')}`}
                   </button>
@@ -1028,6 +1053,37 @@ const Dashboard = () => {
                     </tbody>
                   </table>
                 </div>
+              </div>
+
+              {/* Image Upload */}
+              <div style={{ marginTop: '0.5rem', padding: '1rem', background: 'var(--bg-main)', border: '1px dashed var(--border-color)', borderRadius: '8px' }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.5rem', color: 'var(--text-main)' }}>Or Upload Handwritten Prescription (Image)</label>
+                <input 
+                  type="file" 
+                  accept="image/jpeg, image/png, image/jpg"
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files[0]) {
+                      const file = e.target.files[0];
+                      setReportForm(f => ({ 
+                        ...f, 
+                        image: file,
+                        imagePreview: URL.createObjectURL(file)
+                      }));
+                    }
+                  }}
+                  style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}
+                />
+                {reportForm.imagePreview && (
+                  <div style={{ marginTop: '1rem', position: 'relative', width: 'fit-content' }}>
+                    <img src={reportForm.imagePreview} alt="Prescription preview" style={{ height: '120px', borderRadius: '4px', objectFit: 'cover' }} />
+                    <button 
+                      type="button" 
+                      onClick={() => setReportForm(f => ({ ...f, image: null, imagePreview: null }))}
+                      style={{ position: 'absolute', top: '-8px', right: '-8px', background: 'white', color: 'var(--v0-red)', border: '1px solid var(--v0-red)', borderRadius: '50%', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                    >✕</button>
+                  </div>
+                )}
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>If you upload an image, it will replace the medicines table in the final PDF.</p>
               </div>
 
               <div>
