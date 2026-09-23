@@ -898,12 +898,12 @@ const Dashboard = () => {
                     </div>
                   </div>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.4rem', color: 'var(--text-main)' }}>Google Maps Link (for Location)</label>
-                    <input type="url" className="form-input" value={settings.maps_link} onChange={e => setSettings(s => ({ ...s, maps_link: e.target.value }))} placeholder="https://maps.google.com/..." />
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.4rem', color: 'var(--text-main)' }}>{t('dashboard.settingsMapsLink')}</label>
+                    <input type="url" className="form-input" value={settings.maps_link} onChange={e => setSettings(s => ({ ...s, maps_link: e.target.value }))} placeholder={t('dashboard.settingsMapsLinkPh')} />
                   </div>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.4rem', color: 'var(--text-main)' }}>Consultation Fee</label>
-                    <input type="text" className="form-input" value={settings.consultation_fee} onChange={e => setSettings(s => ({ ...s, consultation_fee: e.target.value }))} placeholder="e.g. ₹500" />
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.4rem', color: 'var(--text-main)' }}>{t('dashboard.settingsFee')}</label>
+                    <input type="text" className="form-input" value={settings.consultation_fee} onChange={e => setSettings(s => ({ ...s, consultation_fee: e.target.value }))} placeholder={t('dashboard.settingsFeePh')} />
                   </div>
                   <button type="submit" disabled={settingsSaving} style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: '0.5rem', background: 'var(--v0-blue)', color: 'white', border: 'none', padding: '0.75rem 1.75rem', borderRadius: '8px', fontSize: '0.95rem', fontWeight: 600, cursor: settingsSaving ? 'not-allowed' : 'pointer', opacity: settingsSaving ? 0.7 : 1 }}>
                     {settingsSaving ? t('dashboard.settingsSaving') : `💾 ${t('dashboard.settingsSaveBtn')}`}
@@ -1057,7 +1057,7 @@ const Dashboard = () => {
 
               {/* Image Upload */}
               <div style={{ marginTop: '0.5rem', padding: '1rem', background: 'var(--bg-main)', border: '1px dashed var(--border-color)', borderRadius: '8px' }}>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.5rem', color: 'var(--text-main)' }}>Or Upload Handwritten Prescription (Image)</label>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.5rem', color: 'var(--text-main)' }}>{t('dashboard.modalReportImageUpload')}</label>
                 <input 
                   type="file" 
                   accept="image/jpeg, image/png, image/jpg"
@@ -1083,7 +1083,7 @@ const Dashboard = () => {
                     >✕</button>
                   </div>
                 )}
-                <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>If you upload an image, it will replace the medicines table in the final PDF.</p>
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>{t('dashboard.modalReportImageHint')}</p>
               </div>
 
               <div>
