@@ -840,7 +840,14 @@ def send_google_review_request(to_phone: str, patient_name: str, clinic_name: st
 # Health check endpoint for keepalive pings (Render free-tier spin-down prevention)
 @app.get("/health")
 async def health_check():
-    return {"status": "ok"}
+    """Health check that also touches Supabase to prevent 7-day inactivity pause."""
+    try:
+        # Lightweight query — just count clinics, keeps Supabase active
+        supabase.table("clinics").select("id", count="exact").limit(1).execute()
+        return {"status": "ok", "supabase": "alive"}
+    except Exception:
+        # Still return 200 so UptimeRobot doesn't flag Render as down
+        return {"status": "ok", "supabase": "unreachable"}
 
 
 # 4. Webhook Handshake (GET) for Meta Verification
