@@ -17,6 +17,25 @@ YES = {
     "yes", "y", "ok", "okay", "sure", "haan", "ha", "han", "ji", "जी", "हां", "हाँ",
     "confirm", "book",
 }
+
+def match_clinic(text: str, clinics: list):
+    """
+    Public helper: find a clinic by 1-based number, ID prefix, or partial name match.
+    Returns the clinic dict or None.
+    """
+    n = normalize(text)
+    # Number-based selection (1, 2, 3…)
+    if n.isdigit():
+        idx = int(n) - 1
+        if 0 <= idx < len(clinics):
+            return clinics[idx]
+    # Exact or partial name match
+    for c in clinics:
+        cname = normalize(c.get("business_name") or "")
+        if cname and (cname == n or n in cname or cname in n):
+            return c
+    return None
+
 NO = {"no", "n", "nahi", "nahin", "nope", "नहीं", "ना"}
 CANCEL_KEYS = ("cancel", "radd", "रद्द")
 RESCHEDULE_KEYS = ("reschedule", "change time", "postpone", "shift", "badal", "badlo")
