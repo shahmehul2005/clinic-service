@@ -66,7 +66,9 @@ const Footer = () => {
             </li>
             <li style={{ display: 'flex', gap: '0.75rem', color: 'var(--text-secondary)', fontSize: '0.9rem', alignItems: 'flex-start' }}>
               <Phone size={16} style={{ marginTop: '3px', flexShrink: 0, color: 'var(--v0-blue)' }} />
-              <span>+1 (555) 123-4567</span>
+              <a href="tel:+919256653646" style={{ color: 'var(--text-secondary)', textDecoration: 'none' }} onMouseOver={(e) => e.target.style.color='var(--v0-blue)'} onMouseOut={(e) => e.target.style.color='var(--text-secondary)'}>
+                +91 92566 53646
+              </a>
             </li>
 
           </ul>
