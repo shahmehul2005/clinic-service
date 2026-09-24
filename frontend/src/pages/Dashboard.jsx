@@ -445,7 +445,7 @@ const Dashboard = () => {
             <button onClick={logout} className="btn-v0-outline" style={{ padding: '0.75rem 1.5rem', borderRadius: '8px' }}>
               Logout
             </button>
-            <a href="mailto:support@sanwariyatech.dev" className="btn-v0-primary" style={{ padding: '0.75rem 1.5rem', borderRadius: '8px', textDecoration: 'none' }}>
+            <a href="https://wa.me/919256653646" target="_blank" rel="noopener noreferrer" className="btn-v0-primary" style={{ padding: '0.75rem 1.5rem', borderRadius: '8px', textDecoration: 'none' }}>
               Contact Sales
             </a>
           </div>
