@@ -127,7 +127,8 @@ class TestAgentBookingTactics(unittest.TestCase):
         mock_appts.data = []
         table = mock_supabase.table.return_value
         table.select.return_value.eq.return_value.execute.return_value = MagicMock(data=[self.default_clinic])
-        table.select.return_value.eq.return_value.gte.return_value.lte.return_value.execute.return_value = mock_appts
+        # V2: query now includes .in_("status", [...]) before .gte/.lte
+        table.select.return_value.eq.return_value.in_.return_value.gte.return_value.lte.return_value.execute.return_value = mock_appts
 
         with patch("agent.get_now", return_value=datetime(2026, 8, 22, 8, 0, tzinfo=timezone(timedelta(hours=5, minutes=30)))):
             result = check_availability("c1", "2026-08-22")

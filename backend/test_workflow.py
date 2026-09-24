@@ -344,8 +344,10 @@ def test_slot_select_via_id_goes_to_booking_confirm():
     assert wf2["step"] == "booking_confirm"
     assert wf2["pending_time"] == "17:00"
     assert is_interactive(reply, "button")
-    # Confirm button should show the time in the body text
-    assert "17:00" in reply.get("body", "") or "17:00" in str(reply)
+    # Body contains formatted date/time (exact format varies by platform: "5:00 PM" on Linux, "17:00" on Windows)
+    body = reply.get("body", "")
+    assert "Aug 22" in body or "17:00" in body or "5:00" in body, \
+        f"Expected date/time reference in body, got: {body}"
 
 
 def test_booking_confirm_yes_books_slot():

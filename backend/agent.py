@@ -218,10 +218,13 @@ def check_availability(clinic_id: str, date_str: str) -> dict:
             return False
 
         now = get_now()
-        cutoff = now + timedelta(minutes=30)  # must be at least 30 min in future
+        # iter_slots needs tz-aware now (it uses IST internally for cursor comparison)
+        # but yields naive datetimes; build a naive cutoff for slot filtering
+        now_naive = now.replace(tzinfo=None) if now.tzinfo else now
+        cutoff = now_naive + timedelta(minutes=30)  # must be at least 30 min in future
         available_slots = []
         for slot_dt in iter_slots(date_str, working_hours, duration, now):
-            # Past/too-soon filter
+            # slot_dt is always naive (iter_slots strips tzinfo before yielding)
             if slot_dt < cutoff:
                 continue
             if is_too_close(slot_dt):

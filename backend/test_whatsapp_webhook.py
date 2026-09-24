@@ -101,13 +101,14 @@ class TestWhatsAppWebhook(unittest.TestCase):
             mock_proc.assert_called_once()
 
     @patch("agent.save_session")
+    @patch("agent.send_whatsapp_interactive")  # V2: language list is now interactive
     @patch("agent.send_whatsapp_message")
     @patch("agent.get_all_clinics", return_value=[{"id": "c1", "business_name": "Demo", "booking_mode": "scheduled"}])
     @patch("agent.get_patient_name", return_value="Riya")
     @patch("agent.claim_message_id", return_value=True)
     @patch("agent.load_session")
     def test_process_sends_workflow_reply(
-        self, mock_load, mock_claim, mock_name, mock_clinics, mock_send, mock_save
+        self, mock_load, mock_claim, mock_name, mock_clinics, mock_send_text, mock_send_interactive, mock_save
     ):
         from agent import process_whatsapp_message
         from workflow import default_workflow
@@ -115,9 +116,14 @@ class TestWhatsAppWebhook(unittest.TestCase):
         mock_load.return_value = ([], default_workflow("Riya"))
         process_whatsapp_message(TEXT_PAYLOAD)
         mock_claim.assert_called_once_with("wamid.ABC", "919876543210")
-        mock_send.assert_called()
-        sent = mock_send.call_args[0][1]
-        self.assertIn("English", sent)
+        # V2: first reply is an interactive list (language selection), not a text message
+        mock_send_interactive.assert_called_once()
+        payload = mock_send_interactive.call_args[0][1]  # second positional arg is the payload dict
+        # The language list should contain rows with English and Hindi options
+        rows = payload.get("rows", [])
+        row_titles = [r.get("title", "") for r in rows]
+        self.assertTrue(any("English" in t for t in row_titles),
+                        f"Expected 'English' in interactive rows, got: {row_titles}")
         mock_save.assert_called()
 
     @patch("agent.send_whatsapp_message")
