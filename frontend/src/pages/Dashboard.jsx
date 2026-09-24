@@ -34,11 +34,12 @@ const Dashboard = () => {
     followup_date: '', special_notes: '',
     medicines: [{ name: '', dosage: '', frequency: '', duration: '' }]
   });
+  const [reportImageFile, setReportImageFile] = useState(null);
   const [reportSending, setReportSending] = useState(false);
   const [toast, setToast] = useState(null);
 
   // Settings state
-  const [settings, setSettings] = useState({ google_review_link: '', doctor_name: '', clinic_address: '', maps_link: '', consultation_fee: '' });
+  const [settings, setSettings] = useState({ google_review_link: '', doctor_name: '', clinic_address: '', consultation_fee: '', maps_link: '' });
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   
@@ -57,7 +58,7 @@ const Dashboard = () => {
     const fetchClinicData = async () => {
       const { data, error } = await supabase
         .from('clinics')
-        .select('business_name, trial_end_date, booking_mode, current_serving_token, google_review_link, doctor_name, clinic_address, maps_link, consultation_fee')
+        .select('business_name, trial_end_date, booking_mode, current_serving_token, google_review_link, doctor_name, clinic_address, consultation_fee, maps_link')
         .eq('id', clinicId)
         .single();
         
@@ -72,8 +73,8 @@ const Dashboard = () => {
           google_review_link: data.google_review_link || '',
           doctor_name: data.doctor_name || '',
           clinic_address: data.clinic_address || '',
-          maps_link: data.maps_link || '',
           consultation_fee: data.consultation_fee || '',
+          maps_link: data.maps_link || '',
         });
         setSettingsLoaded(true);
       }
@@ -311,6 +312,7 @@ const Dashboard = () => {
   // ---- Report helpers ----
   const openReportModal = (apt) => {
     setReportModal(apt);
+    setReportImageFile(null);
     setReportForm({
       patient_age: '', chief_complaint: '', diagnosis: '',
       followup_date: '', special_notes: '',
@@ -340,25 +342,31 @@ const Dashboard = () => {
     setReportSending(true);
     try {
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-      
-      const formData = new FormData();
-      formData.append("appointment_id", reportModal.id);
-      formData.append("patient_age", reportForm.patient_age);
-      formData.append("chief_complaint", reportForm.chief_complaint);
-      formData.append("diagnosis", reportForm.diagnosis);
-      formData.append("followup_date", reportForm.followup_date);
-      formData.append("special_notes", reportForm.special_notes);
-      
-      const validMedicines = reportForm.medicines.filter(m => m.name.trim() !== '');
-      formData.append("medicines", JSON.stringify(validMedicines));
-      
-      if (reportForm.image) {
-        formData.append("image", reportForm.image);
+
+      // If an image was uploaded, use the image endpoint
+      if (reportImageFile) {
+        const formData = new FormData();
+        formData.append('appointment_id', reportModal.id);
+        formData.append('image', reportImageFile);
+        const resp = await fetch(`${apiUrl}/api/reports/send-image`, {
+          method: 'POST',
+          body: formData,
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+          showToast(`✅ Image report sent to ${reportModal.patient_name || 'patient'} on WhatsApp!`, 'success');
+          setReportModal(null);
+        } else {
+          showToast(`❌ Failed: ${data.detail || 'Unknown error'}`, 'error');
+        }
+        return;
       }
 
+      // Otherwise send typed report as PDF
       const resp = await fetch(`${apiUrl}/api/reports/send`, {
         method: 'POST',
-        body: formData
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ appointment_id: reportModal.id, ...reportForm })
       });
       const data = await resp.json();
       if (resp.ok) {
@@ -898,12 +906,14 @@ const Dashboard = () => {
                     </div>
                   </div>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.4rem', color: 'var(--text-main)' }}>{t('dashboard.settingsMapsLink')}</label>
-                    <input type="url" className="form-input" value={settings.maps_link} onChange={e => setSettings(s => ({ ...s, maps_link: e.target.value }))} placeholder={t('dashboard.settingsMapsLinkPh')} />
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.4rem', color: 'var(--text-main)' }}>💰 Consultation Fee (₹)</label>
+                    <input type="text" className="form-input" value={settings.consultation_fee} onChange={e => setSettings(s => ({ ...s, consultation_fee: e.target.value }))} placeholder="e.g. 300" />
+                    <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>Shown to patients on WhatsApp when they ask about fees</p>
                   </div>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.4rem', color: 'var(--text-main)' }}>{t('dashboard.settingsFee')}</label>
-                    <input type="text" className="form-input" value={settings.consultation_fee} onChange={e => setSettings(s => ({ ...s, consultation_fee: e.target.value }))} placeholder={t('dashboard.settingsFeePh')} />
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.4rem', color: 'var(--text-main)' }}>📍 Google Maps Link</label>
+                    <input type="url" className="form-input" value={settings.maps_link} onChange={e => setSettings(s => ({ ...s, maps_link: e.target.value }))} placeholder="https://maps.app.goo.gl/..." />
+                    <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>Sent to patients when they tap "Location / Maps" on WhatsApp</p>
                   </div>
                   <button type="submit" disabled={settingsSaving} style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: '0.5rem', background: 'var(--v0-blue)', color: 'white', border: 'none', padding: '0.75rem 1.75rem', borderRadius: '8px', fontSize: '0.95rem', fontWeight: 600, cursor: settingsSaving ? 'not-allowed' : 'pointer', opacity: settingsSaving ? 0.7 : 1 }}>
                     {settingsSaving ? t('dashboard.settingsSaving') : `💾 ${t('dashboard.settingsSaveBtn')}`}
@@ -993,6 +1003,40 @@ const Dashboard = () => {
             </div>
 
             <form onSubmit={handleSendReport} style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
+
+              {/* Image Upload Option */}
+              <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '10px', padding: '1rem' }}>
+                <label style={{ display: 'block', fontSize: '0.88rem', fontWeight: 700, color: '#0369a1', marginBottom: '0.5rem' }}>
+                  📷 Upload Lab Report / Scan Image (optional)
+                </label>
+                <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: '0.6rem' }}>
+                  Upload a photo or scan of a lab report or prescription image. It will be wrapped in a PDF and sent directly. If uploaded, the typed fields below are ignored.
+                </p>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/jpg,image/webp"
+                  onChange={e => setReportImageFile(e.target.files?.[0] || null)}
+                  style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-main)' }}
+                />
+                {reportImageFile && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem', background: '#dcfce7', border: '1px solid #86efac', borderRadius: '6px', padding: '0.4rem 0.7rem', fontSize: '0.82rem', color: '#166534' }}>
+                    ✅ <strong>{reportImageFile.name}</strong> selected — will send as PDF
+                    <button type="button" onClick={() => setReportImageFile(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626', fontSize: '1rem', lineHeight: 1 }}>✕</button>
+                  </div>
+                )}
+              </div>
+
+              {/* Divider */}
+              {!reportImageFile && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
+                  <hr style={{ flex: 1, border: 'none', borderTop: '1px solid var(--border-color)' }} />
+                  OR type the prescription below
+                  <hr style={{ flex: 1, border: 'none', borderTop: '1px solid var(--border-color)' }} />
+                </div>
+              )}
+
+              {/* Typed Report Fields — hidden when image is selected */}
+              {!reportImageFile && (<>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.3rem', color: 'var(--text-main)' }}>Patient Age</label>
@@ -1055,46 +1099,16 @@ const Dashboard = () => {
                 </div>
               </div>
 
-              {/* Image Upload */}
-              <div style={{ marginTop: '0.5rem', padding: '1rem', background: 'var(--bg-main)', border: '1px dashed var(--border-color)', borderRadius: '8px' }}>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.5rem', color: 'var(--text-main)' }}>{t('dashboard.modalReportImageUpload')}</label>
-                <input 
-                  type="file" 
-                  accept="image/jpeg, image/png, image/jpg"
-                  onChange={(e) => {
-                    if (e.target.files && e.target.files[0]) {
-                      const file = e.target.files[0];
-                      setReportForm(f => ({ 
-                        ...f, 
-                        image: file,
-                        imagePreview: URL.createObjectURL(file)
-                      }));
-                    }
-                  }}
-                  style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}
-                />
-                {reportForm.imagePreview && (
-                  <div style={{ marginTop: '1rem', position: 'relative', width: 'fit-content' }}>
-                    <img src={reportForm.imagePreview} alt="Prescription preview" style={{ height: '120px', borderRadius: '4px', objectFit: 'cover' }} />
-                    <button 
-                      type="button" 
-                      onClick={() => setReportForm(f => ({ ...f, image: null, imagePreview: null }))}
-                      style={{ position: 'absolute', top: '-8px', right: '-8px', background: 'white', color: 'var(--v0-red)', border: '1px solid var(--v0-red)', borderRadius: '50%', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-                    >✕</button>
-                  </div>
-                )}
-                <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>{t('dashboard.modalReportImageHint')}</p>
-              </div>
-
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.3rem', color: 'var(--text-main)' }}>Special Instructions (optional)</label>
                 <textarea className="form-input" rows={2} placeholder="Any special notes or instructions for the patient" value={reportForm.special_notes} onChange={e => setReportForm(f => ({ ...f, special_notes: e.target.value }))} style={{ resize: 'vertical' }} />
               </div>
+              </>)}
 
               <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
                 <button type="button" onClick={() => setReportModal(null)} className="btn-v0-outline" style={{ flex: 1, padding: '0.75rem', borderRadius: '8px' }}>Cancel</button>
                 <button type="submit" disabled={reportSending} style={{ flex: 2, padding: '0.75rem', borderRadius: '8px', background: '#0ea5e9', color: 'white', border: 'none', fontWeight: 700, fontSize: '0.95rem', cursor: reportSending ? 'not-allowed' : 'pointer', opacity: reportSending ? 0.7 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-                  <Send size={16} /> {reportSending ? 'Generating & Sending…' : 'Generate PDF & Send via WhatsApp'}
+                  <Send size={16} /> {reportSending ? 'Sending…' : reportImageFile ? '📷 Send Image as PDF via WhatsApp' : 'Generate PDF & Send via WhatsApp'}
                 </button>
               </div>
             </form>

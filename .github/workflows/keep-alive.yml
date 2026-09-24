@@ -2,13 +2,15 @@ name: Keep Services Alive
 
 on:
   schedule:
-    # Ping Render every 10 minutes during clinic hours
-    # UTC 2:30 AM - 4:30 PM = IST 8:00 AM - 10:00 PM
-    # Cron doesn't support half-hour offsets, so we cover UTC 2-16 (IST ~7:30 AM - 10:30 PM)
-    - cron: '*/10 2-16 * * *'
+    # Ping Render every 10 minutes during clinic hours (IST ~7:30 AM - 10:30 PM = UTC 2-17)
+    - cron: '*/10 2-17 * * *'
 
     # Ping Supabase once daily at 6:00 AM UTC (11:30 AM IST)
     - cron: '0 6 * * *'
+
+    # Send appointment reminders every 10 minutes during clinic hours
+    # Catches all time-based appointments due in the next hour
+    - cron: '*/10 2-17 * * *'
 
   # Allow manual trigger for testing
   workflow_dispatch:
@@ -16,7 +18,7 @@ on:
 jobs:
   ping-render:
     runs-on: ubuntu-latest
-    # Run on every trigger (both cron schedules and manual)
+    if: github.event.schedule == '*/10 2-17 * * *' || github.event_name == 'workflow_dispatch'
     steps:
       - name: Ping Render Backend
         run: |
@@ -31,25 +33,29 @@ jobs:
             echo "⚠️ Render backend returned status $HTTP_STATUS (may be cold-starting)"
           fi
 
+  send-reminders:
+    runs-on: ubuntu-latest
+    if: github.event.schedule == '*/10 2-17 * * *' || github.event_name == 'workflow_dispatch'
+    steps:
       - name: Send Appointment Reminders
         run: |
-          echo "Triggering appointment reminders..."
-          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+          echo "Sending 1-hour appointment reminders..."
+          HTTP_STATUS=$(curl -s -o /tmp/reminder_response.json -w "%{http_code}" \
+            --max-time 60 \
             -X POST \
             -H "Content-Type: application/json" \
             -d "{\"pin\": \"${{ secrets.ADMIN_PIN }}\"}" \
-            --max-time 120 \
             "${{ secrets.RENDER_BACKEND_URL }}/api/internal/send-reminders" || true)
           echo "Response status: $HTTP_STATUS"
+          cat /tmp/reminder_response.json || true
           if [ "$HTTP_STATUS" = "200" ]; then
-            echo "✅ Reminders triggered successfully"
+            echo "✅ Reminders sent successfully"
           else
-            echo "⚠️ Reminder trigger returned status $HTTP_STATUS"
+            echo "⚠️ Reminder endpoint returned status $HTTP_STATUS"
           fi
 
   ping-supabase:
     runs-on: ubuntu-latest
-    # Only run on the daily 6 AM UTC schedule or manual trigger
     if: github.event.schedule == '0 6 * * *' || github.event_name == 'workflow_dispatch'
     steps:
       - name: Ping Supabase

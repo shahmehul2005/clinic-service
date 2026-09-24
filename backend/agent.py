@@ -9,7 +9,7 @@ import re
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 
-from fastapi import FastAPI, Request, Response, BackgroundTasks
+from fastapi import FastAPI, Request, Response, BackgroundTasks, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from supabase import create_client, Client
@@ -85,7 +85,7 @@ def get_all_clinics() -> list:
     """Retrieves all active registered clinics and their live stats."""
     try:
         response = supabase.table("clinics") \
-            .select("id, business_name, trial_end_date, booking_mode, current_serving_token, closed_date, working_days, working_hours") \
+            .select("id, business_name, trial_end_date, booking_mode, current_serving_token, closed_date, working_days, working_hours, consultation_fee, maps_link") \
             .execute()
         if response.data:
             now = get_now()
@@ -682,10 +682,9 @@ def send_whatsapp_template(to_phone: str, template_name: str, components: list =
 
 # ---------- PDF Report Generation ----------
 
-def generate_patient_report_pdf(report_data: dict, clinic_data: dict, image_bytes: bytes = None) -> bytes:
+def generate_patient_report_pdf(report_data: dict, clinic_data: dict) -> bytes:
     """
     Generates a professional medical report PDF using ReportLab.
-    If image_bytes is provided, it replaces the typed prescription section with the image.
     Returns the PDF as raw bytes.
     """
     from reportlab.lib.pagesizes import A4
@@ -818,28 +817,6 @@ def generate_patient_report_pdf(report_data: dict, clinic_data: dict, image_byte
             ("LEFTPADDING", (0, 0), (-1, -1), 6),
         ]))
         story.append(med_table)
-    elif image_bytes:
-        from reportlab.platypus import Image
-        from PIL import Image as PILImage
-        import io
-        
-        try:
-            img = PILImage.open(io.BytesIO(image_bytes))
-            # Calculate aspect ratio to fit width of 17cm (page width - margins)
-            aspect = img.height / float(img.width)
-            img_width = 17 * cm
-            img_height = img_width * aspect
-            # Limit height to avoid page overflow
-            max_height = 20 * cm
-            if img_height > max_height:
-                img_height = max_height
-                img_width = img_height / aspect
-                
-            reportlab_img = Image(io.BytesIO(image_bytes), width=img_width, height=img_height)
-            story.append(reportlab_img)
-        except Exception as e:
-            print(f"Failed to embed image in PDF: {e}")
-            story.append(Paragraph("Failed to load prescription image.", value))
     else:
         story.append(Paragraph("No medicines prescribed.", value))
 
@@ -859,6 +836,85 @@ def generate_patient_report_pdf(report_data: dict, clinic_data: dict, image_byte
     story.append(HRFlowable(width="100%", thickness=1.5, color=brand_blue))
     story.append(Spacer(1, 0.2 * cm))
     story.append(Paragraph("Powered by ClinicOS · This is a computer-generated report.", center))
+
+    doc.build(story)
+    return buf.getvalue()
+
+
+def generate_image_report_pdf(image_bytes: bytes, patient_name: str, clinic_data: dict) -> bytes:
+    """
+    Wraps an uploaded image (scan, lab report photo, etc.) in a PDF
+    with clinic letterhead and patient header above it.
+    Uses Pillow to handle image format conversion and ReportLab for PDF.
+    """
+    from PIL import Image as PILImage
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import cm
+    from reportlab.lib import colors
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image as RLImage, HRFlowable
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.enums import TA_CENTER
+
+    # Convert image bytes to RGB and save as JPEG in memory (compatible with ReportLab)
+    pil_img = PILImage.open(io.BytesIO(image_bytes)).convert("RGB")
+    img_buf = io.BytesIO()
+    pil_img.save(img_buf, format="JPEG", quality=90)
+    img_buf.seek(0)
+
+    page_w, page_h = A4
+    usable_w = page_w - 4 * cm  # 2cm margin each side
+
+    # Scale image to fit page width while preserving aspect ratio
+    orig_w, orig_h = pil_img.size
+    scale = usable_w / orig_w
+    img_display_h = orig_h * scale
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=2*cm, rightMargin=2*cm,
+                             topMargin=2*cm, bottomMargin=2*cm)
+
+    styles = getSampleStyleSheet()
+    brand_blue = colors.HexColor("#1d4ed8")
+
+    clinic_name = clinic_data.get("business_name") or "Clinic"
+    doctor_name = clinic_data.get("doctor_name") or ""
+    address = clinic_data.get("clinic_address") or ""
+
+    header_style = ParagraphStyle("header", fontSize=16, textColor=brand_blue, spaceAfter=2,
+                                   fontName="Helvetica-Bold", alignment=TA_CENTER)
+    sub_style = ParagraphStyle("sub", fontSize=10, textColor=colors.grey,
+                                fontName="Helvetica", alignment=TA_CENTER, spaceAfter=4)
+    label_style = ParagraphStyle("label", fontSize=11, textColor=colors.HexColor("#1e293b"),
+                                  fontName="Helvetica-Bold")
+
+    story = [
+        Paragraph(clinic_name, header_style),
+    ]
+    if doctor_name:
+        story.append(Paragraph(doctor_name, sub_style))
+    if address:
+        story.append(Paragraph(address, sub_style))
+
+    story.append(HRFlowable(width="100%", thickness=2, color=brand_blue, spaceAfter=8))
+    story.append(Paragraph(f"Patient: {patient_name}", label_style))
+    story.append(Spacer(1, 0.3 * cm))
+    story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#dddddd"), spaceAfter=8))
+    story.append(Spacer(1, 0.3 * cm))
+
+    # Add the image, capping height to fit on one page
+    max_h = page_h - 10 * cm  # leave room for header
+    if img_display_h > max_h:
+        scale2 = max_h / img_display_h
+        img_display_h *= scale2
+        usable_w *= scale2
+
+    story.append(RLImage(img_buf, width=usable_w, height=img_display_h))
+    story.append(Spacer(1, 0.5 * cm))
+    story.append(HRFlowable(width="100%", thickness=1.5, color=brand_blue))
+    story.append(Spacer(1, 0.2 * cm))
+    story.append(Paragraph("Powered by ClinicOS · This is a computer-generated report.",
+                             ParagraphStyle("foot", fontSize=8, textColor=colors.grey,
+                                            fontName="Helvetica", alignment=TA_CENTER)))
 
     doc.build(story)
     return buf.getvalue()
@@ -1142,41 +1198,63 @@ class SendReportRequest(BaseModel):
     followup_date: str = ""
     special_notes: str = ""
 
-@app.post("/api/reports/send")
-async def send_patient_report(request: Request):
-    """Generates a PDF medical report and sends it to the patient via WhatsApp. Accepts multipart/form-data."""
+@app.post("/api/reports/send-image")
+async def send_patient_report_image(
+    appointment_id: str = Form(...),
+    image: UploadFile = File(...),
+):
+    """
+    Accepts an uploaded image (jpg/png/pdf scan), wraps it in a
+    clinic-branded PDF, and sends it to the patient via WhatsApp.
+    """
     from fastapi.responses import JSONResponse
-    import json
-    
     try:
-        form_data = await request.form()
-        appointment_id = form_data.get("appointment_id")
-        if not appointment_id:
-            return JSONResponse(status_code=400, content={"detail": "appointment_id is required"})
-
-        # Extract fields
-        patient_age = form_data.get("patient_age", "")
-        chief_complaint = form_data.get("chief_complaint", "")
-        diagnosis = form_data.get("diagnosis", "")
-        followup_date = form_data.get("followup_date", "")
-        special_notes = form_data.get("special_notes", "")
-        
-        medicines_str = form_data.get("medicines", "[]")
-        try:
-            medicines = json.loads(medicines_str)
-        except Exception:
-            medicines = []
-            
-        # Extract image if present
-        image_bytes = None
-        image_file = form_data.get("image")
-        if image_file and hasattr(image_file, "read"):
-            image_bytes = await image_file.read()
-
-        # 1. Fetch appointment details
+        # 1. Fetch appointment
         apt_resp = supabase.table("appointments").select(
             "phone_number, patient_name, clinic_id, appointment_time"
         ).eq("id", appointment_id).limit(1).execute()
+        if not apt_resp.data:
+            return JSONResponse(status_code=404, content={"detail": "Appointment not found"})
+        apt = apt_resp.data[0]
+
+        # 2. Fetch clinic details
+        clinic_resp = supabase.table("clinics").select(
+            "business_name, doctor_name, clinic_address"
+        ).eq("id", apt["clinic_id"]).limit(1).execute()
+        clinic_data = clinic_resp.data[0] if clinic_resp.data else {}
+
+        patient_name = apt.get("patient_name") or "Patient"
+
+        # 3. Read the uploaded image
+        image_bytes = await image.read()
+
+        # 4. Generate PDF wrapping the image
+        pdf_bytes = generate_image_report_pdf(image_bytes, patient_name, clinic_data)
+
+        # 5. Upload & send
+        patient_name_safe = patient_name.replace(" ", "_")
+        filename = f"report_image_{patient_name_safe}.pdf"
+        media_id = upload_media_to_meta(pdf_bytes, filename)
+        if not media_id:
+            return JSONResponse(status_code=502, content={"detail": "Failed to upload PDF to WhatsApp."})
+
+        clinic_name = clinic_data.get("business_name", "our clinic")
+        send_whatsapp_document(apt["phone_number"], media_id, filename, clinic_name, patient_name)
+
+        return {"status": "success", "message": f"Image report sent to {apt['phone_number']}", "patient_name": patient_name}
+    except Exception as e:
+        print(f"Error sending image report: {e}")
+        return JSONResponse(status_code=500, content={"detail": str(e)})
+
+@app.post("/api/reports/send")
+async def send_patient_report(req: SendReportRequest):
+    """Generates a PDF medical report and sends it to the patient via WhatsApp."""
+    from fastapi.responses import JSONResponse
+    try:
+        # 1. Fetch appointment details
+        apt_resp = supabase.table("appointments").select(
+            "phone_number, patient_name, clinic_id, appointment_time"
+        ).eq("id", req.appointment_id).limit(1).execute()
         if not apt_resp.data:
             return JSONResponse(status_code=404, content={"detail": "Appointment not found"})
         apt = apt_resp.data[0]
@@ -1197,17 +1275,17 @@ async def send_patient_report(request: Request):
         report_data = {
             "patient_name": apt.get("patient_name") or "Patient",
             "phone_number": apt.get("phone_number", ""),
-            "patient_age": patient_age,
+            "patient_age": req.patient_age,
             "visit_date": visit_date,
-            "chief_complaint": chief_complaint,
-            "diagnosis": diagnosis,
-            "medicines": medicines,
-            "followup_date": followup_date,
-            "special_notes": special_notes,
+            "chief_complaint": req.chief_complaint,
+            "diagnosis": req.diagnosis,
+            "medicines": req.medicines,
+            "followup_date": req.followup_date,
+            "special_notes": req.special_notes,
         }
 
         # 3. Generate PDF
-        pdf_bytes = generate_patient_report_pdf(report_data, clinic_data, image_bytes)
+        pdf_bytes = generate_patient_report_pdf(report_data, clinic_data)
 
         # 4. Upload to Meta media endpoint
         patient_name_safe = (apt.get("patient_name") or "patient").replace(" ", "_")
@@ -1224,16 +1302,16 @@ async def send_patient_report(request: Request):
         # 6. Save to patient_reports table (audit trail)
         supabase.table("patient_reports").insert({
             "clinic_id": apt["clinic_id"],
-            "appointment_id": appointment_id,
+            "appointment_id": req.appointment_id,
             "phone_number": apt["phone_number"],
             "patient_name": apt.get("patient_name"),
-            "patient_age": patient_age,
+            "patient_age": req.patient_age,
             "doctor_name": clinic_data.get("doctor_name"),
-            "chief_complaint": chief_complaint,
-            "diagnosis": diagnosis,
-            "medicines": medicines,
-            "followup_date": followup_date,
-            "special_notes": special_notes,
+            "chief_complaint": req.chief_complaint,
+            "diagnosis": req.diagnosis,
+            "medicines": req.medicines,
+            "followup_date": req.followup_date,
+            "special_notes": req.special_notes,
         }).execute()
 
         return {
