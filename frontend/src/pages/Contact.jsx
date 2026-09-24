@@ -38,8 +38,8 @@ const Contact = () => {
                 </div>
                 <div>
                   <h3 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '0.25rem' }}>Phone</h3>
-                  <p style={{ color: 'var(--text-secondary)', marginBottom: '0.5rem', fontSize: '0.95rem' }}>Mon-Fri from 9am to 6pm PST.</p>
-                  <span style={{ color: 'var(--text-main)', fontWeight: 600 }}>+1 (555) 123-4567</span>
+                  <p style={{ color: 'var(--text-secondary)', marginBottom: '0.5rem', fontSize: '0.95rem' }}>Mon–Sat, 10 AM – 7 PM IST</p>
+                  <a href="tel:+919256653646" style={{ color: 'var(--v0-blue)', fontWeight: 600, textDecoration: 'none' }}>+91 92566 53646</a>
                 </div>
               </div>
 

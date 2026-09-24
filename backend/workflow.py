@@ -49,6 +49,7 @@ ID_TIMING = "timing"
 ID_FEE = "fee"
 ID_LOCATION = "location"
 ID_DOCTOR_STATUS = "doctor_status"
+ID_CLINIC_PHONE = "clinic_phone"
 ID_CANCEL = "cancel"
 ID_TOKEN_CONFIRM = "token_yes"
 ID_TOKEN_BACK = "token_no"
@@ -293,6 +294,8 @@ def _build_main_menu(clinic: dict, lang: str) -> dict:
              "description": t(lang, "Doctor's charges", "डॉक्टर की फीस")},
             {"id": ID_LOCATION, "title": t(lang, "📍 Location / Maps", "📍 स्थान / नक्शा"),
              "description": t(lang, "Get Google Maps link", "गूगल मैप्स लिंक पाएं")},
+            {"id": ID_CLINIC_PHONE, "title": t(lang, "📞 Call Clinic", "📞 क्लिनिक को कॉल करें"),
+             "description": t(lang, "Get clinic contact number", "क्लिनिक का नंबर पाएं")},
             {"id": ID_DOCTOR_STATUS, "title": t(lang, "👨‍⚕️ Doctor Available?", "👨‍⚕️ डॉक्टर उपलब्ध हैं?"),
              "description": t(lang, "Is clinic open today?", "क्या क्लिनिक आज खुला है?")},
             {"id": ID_CANCEL, "title": t(lang, "❌ Cancel Appointment", "❌ अपॉइंटमेंट रद्द करें"),
@@ -478,6 +481,7 @@ def handle_turn(text, wf, clinics, phone, now, tools, groq_client=None,
         # Store extra fields needed for menu info
         wf["clinic_fee"] = chosen.get("consultation_fee")
         wf["clinic_maps"] = chosen.get("maps_link")
+        wf["clinic_phone"] = chosen.get("clinic_phone")
         wf["clinic_hours"] = chosen.get("working_hours") or {"start": "09:00", "end": "21:00"}
         wf["clinic_closed_date"] = chosen.get("closed_date")
 
@@ -533,6 +537,20 @@ def handle_turn(text, wf, clinics, phone, now, tools, groq_client=None,
             if result.get("status") == "success":
                 wf["step"] = "idle"
             return t(lang, result.get("message", "Appointment cancelled."), result.get("message", "अपॉइंटमेंट रद्द हो गई।")), wf, False
+
+        elif menu_id == ID_CLINIC_PHONE:
+            phone_num = wf.get("clinic_phone")
+            if phone_num:
+                return t(
+                    lang,
+                    f"📞 *{wf.get('clinic_name')}* contact number:\n*{phone_num}*\n\nTap the number above to call, or save it in your contacts.",
+                    f"📞 *{wf.get('clinic_name')}* का संपर्क नंबर:\n*{phone_num}*\n\nऊपर दिए नंबर पर टैप करके कॉल करें या उसे सेव करें।"
+                ) + "\n\n" + t(lang, "Send *menu* to go back.", "*menu* टाइप करें वापस जाने के लिए।"), wf, False
+            return t(
+                lang,
+                "📞 Clinic contact number is not available. Please visit the clinic directly.",
+                "📞 क्लिनिक का संपर्क नंबर उपलब्ध नहीं है। कृपया सीधे क्लिनिक जाएं।"
+            ), wf, False
 
         else:
             # Unrecognized — re-show menu

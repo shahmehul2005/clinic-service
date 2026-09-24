@@ -103,7 +103,7 @@ def get_all_clinics() -> list:
     """Retrieves all active registered clinics and their live stats."""
     try:
         response = supabase.table("clinics") \
-            .select("id, business_name, trial_end_date, booking_mode, current_serving_token, closed_date, working_days, working_hours, consultation_fee, maps_link") \
+            .select("id, business_name, trial_end_date, booking_mode, current_serving_token, closed_date, working_days, working_hours, consultation_fee, maps_link, clinic_phone") \
             .execute()
         if response.data:
             now = get_now()
@@ -1353,6 +1353,7 @@ class ClinicSettingsRequest(BaseModel):
     clinic_address: str = ""
     consultation_fee: str = ""
     maps_link: str = ""
+    clinic_phone: str = ""
 
 @app.patch("/api/clinics/{clinic_id}/settings")
 async def update_clinic_settings(clinic_id: str, req: ClinicSettingsRequest):
@@ -1370,6 +1371,8 @@ async def update_clinic_settings(clinic_id: str, req: ClinicSettingsRequest):
             update_data["consultation_fee"] = req.consultation_fee or None
         if req.maps_link is not None:
             update_data["maps_link"] = req.maps_link or None
+        if req.clinic_phone is not None:
+            update_data["clinic_phone"] = req.clinic_phone or None
 
         if not update_data:
             return {"status": "success", "message": "Nothing to update."}

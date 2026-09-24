@@ -39,7 +39,7 @@ const Dashboard = () => {
   const [toast, setToast] = useState(null);
 
   // Settings state
-  const [settings, setSettings] = useState({ google_review_link: '', doctor_name: '', clinic_address: '', consultation_fee: '', maps_link: '' });
+  const [settings, setSettings] = useState({ google_review_link: '', doctor_name: '', clinic_address: '', consultation_fee: '', maps_link: '', clinic_phone: '' });
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   
@@ -58,7 +58,7 @@ const Dashboard = () => {
     const fetchClinicData = async () => {
       const { data, error } = await supabase
         .from('clinics')
-        .select('business_name, trial_end_date, booking_mode, current_serving_token, google_review_link, doctor_name, clinic_address, consultation_fee, maps_link')
+        .select('business_name, trial_end_date, booking_mode, current_serving_token, google_review_link, doctor_name, clinic_address, consultation_fee, maps_link, clinic_phone')
         .eq('id', clinicId)
         .single();
         
@@ -75,6 +75,7 @@ const Dashboard = () => {
           clinic_address: data.clinic_address || '',
           consultation_fee: data.consultation_fee || '',
           maps_link: data.maps_link || '',
+          clinic_phone: data.clinic_phone || '',
         });
         setSettingsLoaded(true);
       }
@@ -914,6 +915,11 @@ const Dashboard = () => {
                     <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.4rem', color: 'var(--text-main)' }}>📍 Google Maps Link</label>
                     <input type="url" className="form-input" value={settings.maps_link} onChange={e => setSettings(s => ({ ...s, maps_link: e.target.value }))} placeholder="https://maps.app.goo.gl/..." />
                     <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>Sent to patients when they tap "Location / Maps" on WhatsApp</p>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.4rem', color: 'var(--text-main)' }}>📞 Clinic Contact Number</label>
+                    <input type="tel" className="form-input" value={settings.clinic_phone} onChange={e => setSettings(s => ({ ...s, clinic_phone: e.target.value }))} placeholder="+91 98765 43210" />
+                    <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>Sent to patients when they tap "📞 Call Clinic" on WhatsApp</p>
                   </div>
                   <button type="submit" disabled={settingsSaving} style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: '0.5rem', background: 'var(--v0-blue)', color: 'white', border: 'none', padding: '0.75rem 1.75rem', borderRadius: '8px', fontSize: '0.95rem', fontWeight: 600, cursor: settingsSaving ? 'not-allowed' : 'pointer', opacity: settingsSaving ? 0.7 : 1 }}>
                     {settingsSaving ? t('dashboard.settingsSaving') : `💾 ${t('dashboard.settingsSaveBtn')}`}
