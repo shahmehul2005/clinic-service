@@ -9,7 +9,7 @@ import re
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 
-from fastapi import FastAPI, Request, Response, BackgroundTasks
+from fastapi import FastAPI, Request, Response, BackgroundTasks, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from supabase import create_client, Client
@@ -85,7 +85,7 @@ def get_all_clinics() -> list:
     """Retrieves all active registered clinics and their live stats."""
     try:
         response = supabase.table("clinics") \
-            .select("id, business_name, trial_end_date, booking_mode, current_serving_token, closed_date, working_days, working_hours") \
+            .select("id, business_name, trial_end_date, booking_mode, current_serving_token, closed_date, working_days, working_hours, consultation_fee, maps_link") \
             .execute()
         if response.data:
             now = get_now()
@@ -192,23 +192,41 @@ def check_availability(clinic_id: str, date_str: str) -> dict:
 
         booked_resp = supabase.table("appointments").select("slot_start, appointment_time").eq(
             "clinic_id", clinic_id
-        ).gte("appointment_time", f"{date_str} 00:00:00").lte(
+        ).in_("status", ["booked", "arrived"]).gte("appointment_time", f"{date_str} 00:00:00").lte(
             "appointment_time", f"{date_str} 23:59:59"
         ).execute()
 
-        booked = set()
+        # Build set of booked minute-timestamps for gap checking
+        booked_minutes = set()
         for record in (booked_resp.data or []):
             raw = record.get("slot_start") or record.get("appointment_time")
             if not raw:
                 continue
-            booked.add(str(raw).replace("T", " ")[:16])
+            raw_str = str(raw).replace("T", " ")[:16]
+            try:
+                booked_dt = datetime.strptime(raw_str, "%Y-%m-%d %H:%M")
+                booked_minutes.add(booked_dt)
+            except Exception:
+                pass
+
+        # 20-minute gap: block any slot within 20 min of a booked slot
+        def is_too_close(slot_dt):
+            for b in booked_minutes:
+                diff = abs((slot_dt - b).total_seconds() / 60)
+                if diff < 20:
+                    return True
+            return False
 
         now = get_now()
+        cutoff = now + timedelta(minutes=30)  # must be at least 30 min in future
         available_slots = []
         for slot_dt in iter_slots(date_str, working_hours, duration, now):
-            key = slot_dt.strftime("%Y-%m-%d %H:%M")
-            if key not in booked:
-                available_slots.append(slot_dt.strftime("%H:%M"))
+            # Past/too-soon filter
+            if slot_dt < cutoff:
+                continue
+            if is_too_close(slot_dt):
+                continue
+            available_slots.append(slot_dt.strftime("%H:%M"))
 
         import random
         suggested = random.sample(available_slots, min(5, len(available_slots)))
@@ -552,6 +570,75 @@ def send_whatsapp_message(to_phone: str, message: str):
     if response.status_code != 200:
         print(f"ERROR sending WhatsApp message: {response.text}")
 
+def send_whatsapp_interactive(to_phone: str, interactive_payload: dict):
+    """
+    Sends an interactive message (button or list) via Meta Graph API.
+    interactive_payload must follow the workflow.py dict format:
+      {
+        "interactive_type": "button" | "list",
+        "header": "...",   (optional)
+        "body": "...",
+        "buttons": [...],  (for type=button, max 3)
+        "rows": [...],     (for type=list, max 10)
+        "button_label": "...", (for type=list, the CTA button label)
+      }
+    Falls back to plain text if Meta API keys are missing.
+    """
+    if not META_ACCESS_TOKEN or not META_PHONE_NUMBER_ID:
+        print("WARNING: Meta API keys missing. Interactive message not sent.")
+        return
+
+    sanitized_phone = ''.join(filter(str.isdigit, to_phone))
+    if not sanitized_phone:
+        return
+
+    itype = interactive_payload.get("interactive_type", "button")
+    body_text = interactive_payload.get("body", "")
+    header_text = interactive_payload.get("header", "")
+
+    interactive = {"type": itype, "body": {"text": body_text}}
+    if header_text:
+        interactive["header"] = {"type": "text", "text": header_text}
+
+    if itype == "button":
+        buttons = interactive_payload.get("buttons", [])
+        interactive["action"] = {
+            "buttons": [
+                {"type": "reply", "reply": {"id": b["id"], "title": b["title"][:20]}}
+                for b in buttons[:3]
+            ]
+        }
+    elif itype == "list":
+        rows = interactive_payload.get("rows", [])
+        button_label = interactive_payload.get("button_label", "View Options")[:20]
+        formatted_rows = []
+        for r in rows[:10]:
+            row = {"id": r["id"], "title": r["title"][:24]}
+            if r.get("description"):
+                row["description"] = r["description"][:72]
+            formatted_rows.append(row)
+        interactive["action"] = {
+            "button": button_label,
+            "sections": [{"title": "Options", "rows": formatted_rows}]
+        }
+
+    url = f"https://graph.facebook.com/v18.0/{META_PHONE_NUMBER_ID}/messages"
+    headers = {"Authorization": f"Bearer {META_ACCESS_TOKEN}", "Content-Type": "application/json"}
+    payload = {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": sanitized_phone,
+        "type": "interactive",
+        "interactive": interactive,
+    }
+    print(f"[WA] Sending interactive '{itype}' to {sanitized_phone}...")
+    response = requests.post(url, headers=headers, json=payload)
+    print(f"[WA] Interactive response: {response.status_code} — {response.text[:200]}")
+    if response.status_code != 200:
+        print(f"ERROR sending interactive message: {response.text}")
+        # Fallback to plain text with the body
+        send_whatsapp_message(to_phone, body_text)
+
 def send_whatsapp_template(to_phone: str, template_name: str, components: list = None, language_code: str = "en"):
     """Sends a pre-approved template message via Meta Graph API."""
     if not META_ACCESS_TOKEN or not META_PHONE_NUMBER_ID:
@@ -749,6 +836,85 @@ def generate_patient_report_pdf(report_data: dict, clinic_data: dict) -> bytes:
     story.append(HRFlowable(width="100%", thickness=1.5, color=brand_blue))
     story.append(Spacer(1, 0.2 * cm))
     story.append(Paragraph("Powered by ClinicOS · This is a computer-generated report.", center))
+
+    doc.build(story)
+    return buf.getvalue()
+
+
+def generate_image_report_pdf(image_bytes: bytes, patient_name: str, clinic_data: dict) -> bytes:
+    """
+    Wraps an uploaded image (scan, lab report photo, etc.) in a PDF
+    with clinic letterhead and patient header above it.
+    Uses Pillow to handle image format conversion and ReportLab for PDF.
+    """
+    from PIL import Image as PILImage
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import cm
+    from reportlab.lib import colors
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image as RLImage, HRFlowable
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.enums import TA_CENTER
+
+    # Convert image bytes to RGB and save as JPEG in memory (compatible with ReportLab)
+    pil_img = PILImage.open(io.BytesIO(image_bytes)).convert("RGB")
+    img_buf = io.BytesIO()
+    pil_img.save(img_buf, format="JPEG", quality=90)
+    img_buf.seek(0)
+
+    page_w, page_h = A4
+    usable_w = page_w - 4 * cm  # 2cm margin each side
+
+    # Scale image to fit page width while preserving aspect ratio
+    orig_w, orig_h = pil_img.size
+    scale = usable_w / orig_w
+    img_display_h = orig_h * scale
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=2*cm, rightMargin=2*cm,
+                             topMargin=2*cm, bottomMargin=2*cm)
+
+    styles = getSampleStyleSheet()
+    brand_blue = colors.HexColor("#1d4ed8")
+
+    clinic_name = clinic_data.get("business_name") or "Clinic"
+    doctor_name = clinic_data.get("doctor_name") or ""
+    address = clinic_data.get("clinic_address") or ""
+
+    header_style = ParagraphStyle("header", fontSize=16, textColor=brand_blue, spaceAfter=2,
+                                   fontName="Helvetica-Bold", alignment=TA_CENTER)
+    sub_style = ParagraphStyle("sub", fontSize=10, textColor=colors.grey,
+                                fontName="Helvetica", alignment=TA_CENTER, spaceAfter=4)
+    label_style = ParagraphStyle("label", fontSize=11, textColor=colors.HexColor("#1e293b"),
+                                  fontName="Helvetica-Bold")
+
+    story = [
+        Paragraph(clinic_name, header_style),
+    ]
+    if doctor_name:
+        story.append(Paragraph(doctor_name, sub_style))
+    if address:
+        story.append(Paragraph(address, sub_style))
+
+    story.append(HRFlowable(width="100%", thickness=2, color=brand_blue, spaceAfter=8))
+    story.append(Paragraph(f"Patient: {patient_name}", label_style))
+    story.append(Spacer(1, 0.3 * cm))
+    story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#dddddd"), spaceAfter=8))
+    story.append(Spacer(1, 0.3 * cm))
+
+    # Add the image, capping height to fit on one page
+    max_h = page_h - 10 * cm  # leave room for header
+    if img_display_h > max_h:
+        scale2 = max_h / img_display_h
+        img_display_h *= scale2
+        usable_w *= scale2
+
+    story.append(RLImage(img_buf, width=usable_w, height=img_display_h))
+    story.append(Spacer(1, 0.5 * cm))
+    story.append(HRFlowable(width="100%", thickness=1.5, color=brand_blue))
+    story.append(Spacer(1, 0.2 * cm))
+    story.append(Paragraph("Powered by ClinicOS · This is a computer-generated report.",
+                             ParagraphStyle("foot", fontSize=8, textColor=colors.grey,
+                                            fontName="Helvetica", alignment=TA_CENTER)))
 
     doc.build(story)
     return buf.getvalue()
@@ -1032,6 +1198,54 @@ class SendReportRequest(BaseModel):
     followup_date: str = ""
     special_notes: str = ""
 
+@app.post("/api/reports/send-image")
+async def send_patient_report_image(
+    appointment_id: str = Form(...),
+    image: UploadFile = File(...),
+):
+    """
+    Accepts an uploaded image (jpg/png/pdf scan), wraps it in a
+    clinic-branded PDF, and sends it to the patient via WhatsApp.
+    """
+    from fastapi.responses import JSONResponse
+    try:
+        # 1. Fetch appointment
+        apt_resp = supabase.table("appointments").select(
+            "phone_number, patient_name, clinic_id, appointment_time"
+        ).eq("id", appointment_id).limit(1).execute()
+        if not apt_resp.data:
+            return JSONResponse(status_code=404, content={"detail": "Appointment not found"})
+        apt = apt_resp.data[0]
+
+        # 2. Fetch clinic details
+        clinic_resp = supabase.table("clinics").select(
+            "business_name, doctor_name, clinic_address"
+        ).eq("id", apt["clinic_id"]).limit(1).execute()
+        clinic_data = clinic_resp.data[0] if clinic_resp.data else {}
+
+        patient_name = apt.get("patient_name") or "Patient"
+
+        # 3. Read the uploaded image
+        image_bytes = await image.read()
+
+        # 4. Generate PDF wrapping the image
+        pdf_bytes = generate_image_report_pdf(image_bytes, patient_name, clinic_data)
+
+        # 5. Upload & send
+        patient_name_safe = patient_name.replace(" ", "_")
+        filename = f"report_image_{patient_name_safe}.pdf"
+        media_id = upload_media_to_meta(pdf_bytes, filename)
+        if not media_id:
+            return JSONResponse(status_code=502, content={"detail": "Failed to upload PDF to WhatsApp."})
+
+        clinic_name = clinic_data.get("business_name", "our clinic")
+        send_whatsapp_document(apt["phone_number"], media_id, filename, clinic_name, patient_name)
+
+        return {"status": "success", "message": f"Image report sent to {apt['phone_number']}", "patient_name": patient_name}
+    except Exception as e:
+        print(f"Error sending image report: {e}")
+        return JSONResponse(status_code=500, content={"detail": str(e)})
+
 @app.post("/api/reports/send")
 async def send_patient_report(req: SendReportRequest):
     """Generates a PDF medical report and sends it to the patient via WhatsApp."""
@@ -1116,6 +1330,8 @@ class ClinicSettingsRequest(BaseModel):
     google_review_link: str = ""
     doctor_name: str = ""
     clinic_address: str = ""
+    consultation_fee: str = ""
+    maps_link: str = ""
 
 @app.patch("/api/clinics/{clinic_id}/settings")
 async def update_clinic_settings(clinic_id: str, req: ClinicSettingsRequest):
@@ -1129,6 +1345,10 @@ async def update_clinic_settings(clinic_id: str, req: ClinicSettingsRequest):
             update_data["doctor_name"] = req.doctor_name or None
         if req.clinic_address is not None:
             update_data["clinic_address"] = req.clinic_address or None
+        if req.consultation_fee is not None:
+            update_data["consultation_fee"] = req.consultation_fee or None
+        if req.maps_link is not None:
+            update_data["maps_link"] = req.maps_link or None
 
         if not update_data:
             return {"status": "success", "message": "Nothing to update."}
@@ -1140,68 +1360,165 @@ async def update_clinic_settings(clinic_id: str, req: ClinicSettingsRequest):
         return JSONResponse(status_code=500, content={"detail": str(e)})
 
 
-# 5. Webhook Ingestion (POST) for WhatsApp Messages (Secured with Signature check)
+# ---------- Appointment Reminders Endpoint (called by GitHub Actions every 10 min) ----------
+
+class RemindersRequest(BaseModel):
+    pin: str
+
+@app.post("/api/internal/send-reminders")
+async def send_appointment_reminders(req: RemindersRequest):
+    """Sends 1-hour reminder templates to time-based appointments. Called by GitHub Actions cron."""
+    from fastapi.responses import JSONResponse
+    if req.pin != ADMIN_PIN:
+        return JSONResponse(status_code=401, content={"detail": "Invalid PIN"})
+    try:
+        now = get_now()
+        window_start = now + timedelta(minutes=55)
+        window_end = now + timedelta(minutes=65)
+        ws = window_start.strftime("%Y-%m-%d %H:%M:%S")
+        we = window_end.strftime("%Y-%m-%d %H:%M:%S")
+
+        resp = supabase.table("appointments") \
+            .select("id, phone_number, patient_name, appointment_time, clinic_id, reminder_sent") \
+            .eq("status", "booked") \
+            .eq("reminder_sent", False) \
+            .gte("appointment_time", ws) \
+            .lte("appointment_time", we) \
+            .execute()
+
+        sent = 0
+        for apt in (resp.data or []):
+            phone = apt.get("phone_number")
+            clinic_id = apt.get("clinic_id")
+            apt_time = str(apt.get("appointment_time", ""))[:16]
+
+            # Get clinic name
+            c_resp = supabase.table("clinics").select("business_name").eq("id", clinic_id).single().execute()
+            clinic_name = (c_resp.data or {}).get("business_name", "Clinic")
+
+            # Format time nicely
+            try:
+                apt_dt = datetime.strptime(apt_time, "%Y-%m-%d %H:%M")
+                time_label = apt_dt.strftime("%I:%M %p")
+            except Exception:
+                time_label = apt_time
+
+            components = [
+                {"type": "body", "parameters": [
+                    {"type": "text", "text": clinic_name},
+                    {"type": "text", "text": time_label},
+                ]}
+            ]
+            send_whatsapp_template(phone, "appointment_reminder", components)
+            supabase.table("appointments").update({"reminder_sent": True}).eq("id", apt["id"]).execute()
+            sent += 1
+            print(f"[REMINDER] Sent to {phone} for {apt_time}")
+
+        return {"status": "success", "reminders_sent": sent}
+    except Exception as e:
+        print(f"Error sending reminders: {e}")
+        return JSONResponse(status_code=500, content={"detail": str(e)})
+
+
+# 5. Webhook Ingestion (POST) for WhatsApp Messages
 
 def process_whatsapp_message(payload: dict):
-    """Background task to process the incoming message without delaying the webhook response."""
+    """Background task to process incoming WhatsApp message (text or interactive)."""
     try:
-        # Meta sends a specific payload structure. We must parse it to find the message.
-        if "object" in payload and payload["object"] == "whatsapp_business_account":
-            for entry in payload.get("entry", []):
-                for change in entry.get("changes", []):
-                    value = change.get("value", {})
-                    messages = value.get("messages", [])
-                    
-                    if messages:
-                        message_obj = messages[0]
-                        user_phone = message_obj.get("from")
-                        
-                        if message_obj.get("type") == "text":
-                            wamid = message_obj.get("id")
-                            if not claim_message_id(wamid, user_phone):
-                                print(f"Skipping duplicate webhook wamid={wamid}")
-                                return
+        if "object" not in payload or payload["object"] != "whatsapp_business_account":
+            return
 
-                            user_message = message_obj["text"]["body"]
-                            patient_name = get_patient_name(user_phone)
-                            clinics = get_all_clinics()
-                            _history, wf = load_session(user_phone, patient_name)
-                            if patient_name and not wf.get("patient_name"):
-                                wf["patient_name"] = patient_name
+        for entry in payload.get("entry", []):
+            for change in entry.get("changes", []):
+                value = change.get("value", {})
+                messages = value.get("messages", [])
+                if not messages:
+                    continue
 
-                            tools = {
-                                "book_slot": book_slot,
-                                "generate_token": generate_token,
-                                "cancel_appointment": cancel_appointment,
-                                "reschedule_slot": reschedule_slot,
-                                "check_availability": check_availability,
-                            }
-                            try:
-                                reply, wf, used_groq = handle_turn(
-                                    user_message,
-                                    wf,
-                                    clinics,
-                                    user_phone,
-                                    get_now(),
-                                    tools,
-                                    groq_client=client,
-                                )
-                                if used_groq and not check_and_increment_usage():
-                                    send_whatsapp_message(
-                                        user_phone,
-                                        "Our AI receptionist is currently experiencing high traffic. Please wait about 1 minute and send your message again!",
-                                    )
-                                    return
-                                if reply:
-                                    send_whatsapp_message(user_phone, reply)
-                                save_session(user_phone, _history, wf)
-                            except Exception as api_err:
-                                error_str = str(api_err)
-                                if "429" in error_str or "rate limit" in error_str.lower():
-                                    send_whatsapp_message(user_phone, "Our AI receptionist is currently experiencing high traffic. Please wait about 1 minute and send your message again!")
-                                    print(f"API Rate limit hit for {user_phone}: {error_str}")
-                                else:
-                                    print(f"Agent processing error: {error_str}")
+                message_obj = messages[0]
+                user_phone = message_obj.get("from")
+                msg_type = message_obj.get("type")  # "text" | "interactive"
+
+                wamid = message_obj.get("id")
+                if not claim_message_id(wamid, user_phone):
+                    print(f"Skipping duplicate webhook wamid={wamid}")
+                    continue
+
+                # ── Extract text and interactive_id ──────────────────────
+                user_message = ""
+                interactive_id = None
+
+                if msg_type == "text":
+                    user_message = message_obj.get("text", {}).get("body", "")
+                elif msg_type == "interactive":
+                    interactive = message_obj.get("interactive", {})
+                    itype = interactive.get("type")
+                    if itype == "button_reply":
+                        btn = interactive.get("button_reply", {})
+                        interactive_id = btn.get("id", "")
+                        user_message = btn.get("title", "")
+                    elif itype == "list_reply":
+                        lst = interactive.get("list_reply", {})
+                        interactive_id = lst.get("id", "")
+                        user_message = lst.get("title", "")
+                    else:
+                        print(f"Unsupported interactive type: {itype}")
+                        continue
+                else:
+                    print(f"Unsupported message type: {msg_type}")
+                    continue
+
+                # ── Load session + clinics ────────────────────────────────
+                patient_name = get_patient_name(user_phone)
+                clinics = get_all_clinics()
+                _history, wf = load_session(user_phone, patient_name)
+                if patient_name and not wf.get("patient_name"):
+                    wf["patient_name"] = patient_name
+
+                tools = {
+                    "book_slot": book_slot,
+                    "generate_token": generate_token,
+                    "cancel_appointment": cancel_appointment,
+                    "reschedule_slot": reschedule_slot,
+                    "check_availability": check_availability,
+                }
+
+                try:
+                    reply, wf, used_groq = handle_turn(
+                        user_message,
+                        wf,
+                        clinics,
+                        user_phone,
+                        get_now(),
+                        tools,
+                        groq_client=client,
+                        interactive_id=interactive_id,
+                    )
+                    if used_groq and not check_and_increment_usage():
+                        send_whatsapp_message(
+                            user_phone,
+                            "Our AI receptionist is currently experiencing high traffic. Please wait about 1 minute and send your message again!",
+                        )
+                        save_session(user_phone, _history, wf)
+                        continue
+
+                    if reply:
+                        # Dispatch as interactive or plain text based on reply type
+                        if isinstance(reply, dict) and reply.get("type") == "interactive":
+                            send_whatsapp_interactive(user_phone, reply)
+                        else:
+                            send_whatsapp_message(user_phone, str(reply))
+
+                    save_session(user_phone, _history, wf)
+
+                except Exception as api_err:
+                    error_str = str(api_err)
+                    if "429" in error_str or "rate limit" in error_str.lower():
+                        send_whatsapp_message(user_phone, "Our AI receptionist is currently experiencing high traffic. Please wait about 1 minute and send your message again!")
+                        print(f"API Rate limit hit for {user_phone}: {error_str}")
+                    else:
+                        print(f"Agent processing error: {error_str}")
+
     except Exception as general_err:
         print(f"Error in background processing: {general_err}")
 
