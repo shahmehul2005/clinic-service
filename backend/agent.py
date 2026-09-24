@@ -42,13 +42,31 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+# ── CORS: only allow requests from the actual frontend domain ──────────────
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[FRONTEND_URL],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
+
+# ── Simple in-memory rate limiter for /webhook (Meta sends at most a few/sec) ─
+import time
+from collections import defaultdict
+_WEBHOOK_HITS: dict = defaultdict(list)  # ip → [timestamps]
+_WEBHOOK_LIMIT = 60   # max requests per window
+_WEBHOOK_WINDOW = 60  # seconds
+
+def _webhook_rate_check(ip: str) -> bool:
+    """Returns True if request is allowed, False if rate-limited."""
+    now = time.time()
+    hits = [t for t in _WEBHOOK_HITS[ip] if now - t < _WEBHOOK_WINDOW]
+    hits.append(now)
+    _WEBHOOK_HITS[ip] = hits
+    return len(hits) <= _WEBHOOK_LIMIT
+
 
 # 1. Initialize Supabase
 supabase: Client = create_client(
@@ -1528,6 +1546,11 @@ def process_whatsapp_message(payload: dict):
 @app.post("/webhook")
 async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):
     """Handles incoming WhatsApp messages directly from Meta."""
+    # Rate-limit: 60 req/min per IP to block flooding/abuse
+    client_ip = request.client.host if request.client else "unknown"
+    if not _webhook_rate_check(client_ip):
+        return Response(status_code=429, content="Too many requests.")
+
     if not await verify_signature(request):
         return Response(status_code=401, content="Invalid signature validation.")
 
