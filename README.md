@@ -1,48 +1,26 @@
-# Clinic Service (Sanwariya Tech)
+# Frontend — Clinic Service
 
-WhatsApp-first appointment system for clinics. Patients book, cancel, or take a walk-in token on WhatsApp. Reception sees the same queue on a web dashboard..
+This directory contains the React + Vite frontend for the clinic-service application.
 
-Live site: [clinic-service-tawny.vercel.app](https://clinic-service-tawny.vercel.app)
+## What is included
 
-## What it does
+- Marketing landing page and product messaging
+- Staff login flow
+- Protected dashboard for clinic operations
+- Demo, privacy, terms, and deletion request pages
+- Admin onboarding route
+- i18n support for English and Hindi
 
-- **Scripted WhatsApp receptionist** (English or Hindi): language → clinic → name → timed slot **or** token. Replies are templates. Groq is used only to parse messy phrasing into JSON when regex/keywords miss. The model never confirms a booking.
-- **Two clinic modes**: scheduled 10-minute (configurable) slots, or same-day token queues with Call Next + WhatsApp notify.
-- **No double-books at the database**: canonical `slot_start` unique index and `SELECT FOR UPDATE` token numbers (see `backend/reliability_migration.sql`).
-- **Reception dashboard**: React + Supabase realtime. Auth-gated. Status updates send WhatsApp templates.
-- **Ops**: HMAC webhook verify, `wamid` idempotency, persisted workflow state, 2-hour appointment reminders, monthly Groq usage cap.
+## Tech stack
 
-## Stack
-
-| Layer | Tech |
-| --- | --- |
-| WhatsApp | Meta Cloud API (webhooks + messages) |
-| Backend | FastAPI on Render (`agent:app`) |
-| LLM | Groq (`llama-3.3-70b-versatile`, fallback `llama-3.1-8b-instant`) as a JSON parser only |
-| DB / Auth | Supabase Postgres + Auth (JWT). Optional RLS in `enable_rls.sql` for dashboard tenancy — slot integrity is the unique index, not RLS. |
-| Frontend | React 19, Vite, React Router 7, i18next (EN/HI), Vercel |
-
-## Repo layout
-
-```
-clinic-service/
-├── backend/
-│   ├── agent.py                    # FastAPI, webhooks, tools
-│   ├── workflow.py                 # Rule-first booking state machine
-│   ├── ops.py                      # Slot helpers, RPC wrappers
-│   ├── reliability_migration.sql   # Atomic slots/tokens, reminders, wamid, chat
-│   └── test_*.py
-└── frontend/                       # Marketing site + dashboard
-```
+- React 19
+- Vite
+- React Router
+- Supabase JS client
+- i18next
+- Lucide icons
 
 ## Local setup
-
-```bash
-git clone https://github.com/shahmehul2005/clinic-service.git
-cd clinic-service
-```
-
-Frontend:
 
 ```bash
 cd frontend
@@ -50,34 +28,27 @@ npm install
 npm run dev
 ```
 
-Backend:
+## Production build
 
 ```bash
-cd backend
-python -m venv venv
-# Windows: venv\Scripts\activate
-source venv/bin/activate
-pip install -r requirements.txt
-uvicorn agent:app --reload
+cd frontend
+npm run build
 ```
 
-**Required:** run `backend/reliability_migration.sql` in the Supabase SQL editor before booking works.
+## App routes
 
-```bash
-cd backend
-python -m pytest test_ops.py test_agent_tactics.py test_whatsapp_webhook.py test_reliability.py test_workflow.py -q
-```
+- `/`
+- `/login`
+- `/dashboard`
+- `/demo`
+- `/privacy`
+- `/terms`
+- `/data-deletion`
+- `/secret-admin-onboard`
 
-CI runs the same tests on push (`.github/workflows/backend-tests.yml`).
+The frontend depends on backend APIs and Supabase configuration values passed through environment variables.
 
-## Environment
+---
 
-Frontend: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_API_URL`
+This frontend is part of the wider Clinic Service platform. See the repository root README for full setup and backend configuration.
 
-Backend: `SUPABASE_URL`, `SUPABASE_KEY` (service role), `GROQ_API_KEY`, `META_ACCESS_TOKEN`, `META_PHONE_NUMBER_ID`, `META_VERIFY_TOKEN`, `META_CLIENT_SECRET`, `ADMIN_PIN`
-
-Set `ENABLE_BACKGROUND_JOBS=0` to disable the reminder poller (CI does this).
-
-## License
-
-Sanwariya Tech. All rights reserved. Data deletion / support: `support@sanwariyatech.dev`
