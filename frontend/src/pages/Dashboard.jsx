@@ -140,22 +140,20 @@ const Dashboard = () => {
 
   const handleUpdateStatus = async (id, newStatus) => {
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-      const response = await fetch(`${apiUrl}/api/admin/appointments/${id}/status`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus })
-      });
-      
-      if (response.ok) {
-        setAppointments(prev => prev.map(apt => apt.id === id ? { ...apt, status: newStatus } : apt));
-      } else {
-        const errorData = await response.json();
-        alert("Failed to update status: " + (errorData.detail || 'Unknown error'));
-      }
+      const { error } = await supabase
+        .from('appointments')
+        .update({ status: newStatus })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      // Update local state immediately for instant UI feedback
+      setAppointments(prev =>
+        prev.map(apt => apt.id === id ? { ...apt, status: newStatus } : apt)
+      );
     } catch (error) {
-      console.error("Status Update Error:", error);
-      alert("Network error updating status. Make sure VITE_BACKEND_URL is set in Render.");
+      console.error('Status update error:', error);
+      showToast('Failed to update status: ' + (error.message || 'Unknown error'), 'error');
     }
   };
 

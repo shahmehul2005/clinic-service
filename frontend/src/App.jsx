@@ -10,6 +10,7 @@ import Privacy from './pages/Privacy';
 import Terms from './pages/Terms';
 import DataDeletion from './pages/DataDeletion';
 import Demo from './pages/Demo';
+import Contact from './pages/Contact';
 import Admin from './pages/Admin';
 import ProtectedRoute from './components/ProtectedRoute';
 
@@ -33,6 +34,7 @@ function App() {
       <Route path="/privacy" element={<Privacy />} />
       <Route path="/terms" element={<Terms />} />
       <Route path="/data-deletion" element={<DataDeletion />} />
+      <Route path="/contact" element={<Contact />} />
       <Route path="/secret-admin-onboard" element={<Admin />} />
     </Routes>
   );
