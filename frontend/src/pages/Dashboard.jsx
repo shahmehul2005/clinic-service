@@ -65,7 +65,32 @@ const Dashboard = () => {
       if (!error && data) {
         setClinicName(data.business_name);
         setBookingMode(data.booking_mode || 'scheduled');
-        setCurrentServingToken(data.current_serving_token || 0);
+        // Reset token counter to 0 if it's a new day
+        // (DB stores the counter from yesterday; new day means no one has been served yet)
+        const storedToken = data.current_serving_token || 0;
+        if (data.booking_mode === 'token' && storedToken > 0) {
+          // Check if any appointment today has been completed/served
+          // We detect a stale counter by checking if today has no completed appointments
+          // but the counter is >0 — meaning it carried over from yesterday
+          const todayStr = new Date().toISOString().slice(0, 10);
+          const { data: todayDone } = await supabase
+            .from('appointments')
+            .select('id')
+            .eq('clinic_id', clinicId)
+            .eq('status', 'completed')
+            .gte('appointment_time', `${todayStr} 00:00:00`)
+            .lte('appointment_time', `${todayStr} 23:59:59`)
+            .limit(1);
+          if (!todayDone || todayDone.length === 0) {
+            // No completions today — counter is stale, reset it
+            setCurrentServingToken(0);
+            await supabase.from('clinics').update({ current_serving_token: 0 }).eq('id', clinicId);
+          } else {
+            setCurrentServingToken(storedToken);
+          }
+        } else {
+          setCurrentServingToken(storedToken);
+        }
         if (data.trial_end_date && new Date() > new Date(data.trial_end_date)) {
           setIsTrialExpired(true);
         }
@@ -159,21 +184,6 @@ const Dashboard = () => {
     if (response.ok) {
       const newServingToken = currentServingToken + 1;
       setCurrentServingToken(newServingToken);
-
-      // Find the appointment being completed and call the status API
-      // so Google review + visit_thanks WhatsApp messages fire correctly
-      const completedApt = appointments.find(
-        apt => apt.token_number === currentServingToken &&
-          new Date(apt.appointment_time).toLocaleDateString() === new Date().toLocaleDateString()
-      );
-      if (completedApt) {
-        fetch(`${apiUrl}/api/admin/appointments/${completedApt.id}/status`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: 'completed' })
-        }).catch(err => console.error('Status update failed:', err));
-      }
-
       setAppointments(prev => prev.map(apt => {
         if (apt.token_number === currentServingToken && new Date(apt.appointment_time).toLocaleDateString() === new Date().toLocaleDateString()) {
           return { ...apt, status: 'completed' };
@@ -211,6 +221,7 @@ const Dashboard = () => {
     });
     
     if (response.ok) {
+      setCurrentServingToken(0); // Reset token counter locally too
       showToast("Clinic closed for today. Remaining appointments cancelled.", "success");
       if (window._fetchAppointments) window._fetchAppointments();
     } else {
@@ -553,7 +564,8 @@ const Dashboard = () => {
 
         {activeTab === 'overview' ? (
           <>
-            {/* Stat Cards */}
+            {/* Stat Cards — only for timed-slot clinics */}
+            {bookingMode !== 'token' && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.5rem', marginBottom: '3rem' }}>
               <div className="card" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
                 <div style={{ background: 'var(--v0-blue-light)', color: 'var(--v0-blue)', padding: '0.75rem', borderRadius: '50%' }}>
@@ -592,6 +604,7 @@ const Dashboard = () => {
                 </div>
               </div>
             </div>
+            )}
 
             {/* Data Table Area */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>

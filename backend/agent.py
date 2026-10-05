@@ -1570,17 +1570,23 @@ class CallNextRequest(BaseModel):
 
 @app.post("/api/queue/call-next")
 def api_call_next(req: CallNextRequest, bg_tasks: BackgroundTasks):
-    """Marks current as completed, updates counter, and alerts next patients."""
+    """Marks current as completed, updates counter, alerts next patients, and sends Google review."""
     try:
-        # 1. Update current to completed and send Thanks
-        resp1 = supabase.table("appointments").select("id, phone_number").eq("clinic_id", req.clinic_id).eq("token_number", req.current_token).order("created_at", desc=True).limit(1).execute()
+        # 1. Update current to completed and send Thanks + Google Review
+        resp1 = supabase.table("appointments").select("id, phone_number, patient_name").eq("clinic_id", req.clinic_id).eq("token_number", req.current_token).order("created_at", desc=True).limit(1).execute()
         if resp1.data:
             apt = resp1.data[0]
-            clinic_resp = supabase.table("clinics").select("business_name").eq("id", req.clinic_id).execute()
-            clinic_name = clinic_resp.data[0]["business_name"] if clinic_resp.data else "our clinic"
+            clinic_resp = supabase.table("clinics").select("business_name, google_review_link").eq("id", req.clinic_id).execute()
+            clinic_row = clinic_resp.data[0] if clinic_resp.data else {}
+            clinic_name = clinic_row.get("business_name") or "our clinic"
+            google_review_link = clinic_row.get("google_review_link")
+            patient_name = apt.get("patient_name") or ""
             supabase.table("appointments").update({"status": "completed"}).eq("id", apt["id"]).execute()
             components = [{"type": "body", "parameters": [{"type": "text", "text": clinic_name}]}]
             bg_tasks.add_task(send_whatsapp_template, apt["phone_number"], "visit_thanks", components)
+            # Send Google review request if clinic has a review link set
+            if google_review_link:
+                bg_tasks.add_task(send_google_review_request, apt["phone_number"], patient_name, clinic_name, req.clinic_id)
             
         # 2. Update clinics counter
         new_token = req.current_token + 1
@@ -1630,8 +1636,8 @@ def api_close_day(req: CloseDayRequest, bg_tasks: BackgroundTasks):
     try:
         today_str = get_now().strftime("%Y-%m-%d")
         
-        # 1. Set closed_date
-        supabase.table("clinics").update({"closed_date": today_str}).eq("id", req.clinic_id).execute()
+        # 1. Set closed_date and reset token counter to 0 for the next day
+        supabase.table("clinics").update({"closed_date": today_str, "current_serving_token": 0}).eq("id", req.clinic_id).execute()
         
         # 2. Find all remaining booked appointments for today
         resp = supabase.table("appointments") \
