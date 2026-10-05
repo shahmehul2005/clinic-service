@@ -242,14 +242,26 @@ const Dashboard = () => {
     let payload = {};
     if (bookingMode === 'token') {
       // Query Supabase for the true max token today (includes WhatsApp-booked tokens)
+      // Also read last_issued_token from clinic so we don't go below it
       const todayStr = new Date().toISOString().slice(0, 10);
-      const { data: tokenData } = await supabase
-        .from('appointments')
-        .select('token_number')
-        .eq('clinic_id', clinicId)
-        .gte('appointment_time', `${todayStr} 00:00:00`)
-        .lte('appointment_time', `${todayStr} 23:59:59`);
-      const maxToken = (tokenData || []).reduce((max, apt) => Math.max(max, apt.token_number || 0), 0);
+      const [{ data: tokenData }, { data: clinicData }] = await Promise.all([
+        supabase
+          .from('appointments')
+          .select('token_number')
+          .eq('clinic_id', clinicId)
+          .gte('appointment_time', `${todayStr} 00:00:00`)
+          .lte('appointment_time', `${todayStr} 23:59:59`),
+        supabase
+          .from('clinics')
+          .select('last_issued_token, token_seq_date')
+          .eq('id', clinicId)
+          .single()
+      ]);
+      const maxFromApts = (tokenData || []).reduce((max, apt) => Math.max(max, apt.token_number || 0), 0);
+      // If the clinic's token_seq_date is today, also consider last_issued_token
+      const isToday = clinicData?.token_seq_date === todayStr;
+      const maxFromClinic = isToday ? (clinicData?.last_issued_token || 0) : 0;
+      const newToken = Math.max(maxFromApts, maxFromClinic) + 1;
 
       payload = {
         clinic_id: clinicId,
@@ -257,7 +269,7 @@ const Dashboard = () => {
         patient_name: newPatientName,
         appointment_time: new Date().toISOString(),
         status: 'booked',
-        token_number: maxToken + 1
+        token_number: newToken
       };
     } else {
       const appointmentDateTime = new Date(`${newDate}T${newTime}`).toISOString();
@@ -282,6 +294,15 @@ const Dashboard = () => {
         setSubmitError(error.message);
       }
     } else if (data) {
+      // For token clinics: sync last_issued_token on the clinic so WhatsApp
+      // generate_token_atomic uses the correct counter and doesn't issue a duplicate
+      if (bookingMode === 'token' && payload.token_number) {
+        const todayStr = new Date().toISOString().slice(0, 10);
+        await supabase
+          .from('clinics')
+          .update({ last_issued_token: payload.token_number, token_seq_date: todayStr })
+          .eq('id', clinicId);
+      }
       setAppointments(prev => [...prev, data[0]].sort((a, b) => new Date(a.appointment_time) - new Date(b.appointment_time)));
       setIsModalOpen(false);
       setNewPatientName('');
