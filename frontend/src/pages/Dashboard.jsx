@@ -439,7 +439,7 @@ const Dashboard = () => {
             Trial Expired
           </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '1rem', lineHeight: 1.6, marginBottom: '2rem' }}>
-            Your 7-day free trial of Sanwariya Tech has ended. To continue using the AI receptionist and managing your patients, please contact sales to upgrade to a paid plan.
+            Your 30-day free trial of Sanwariya Tech has ended. To continue using the AI receptionist and managing your patients, please contact sales to upgrade to a paid plan.
           </p>
           <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
             <button onClick={logout} className="btn-v0-outline" style={{ padding: '0.75rem 1.5rem', borderRadius: '8px' }}>

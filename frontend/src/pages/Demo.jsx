@@ -37,7 +37,7 @@ const Demo = () => {
             {/* Contact Sales Card */}
             <div style={{ background: 'white', padding: '3rem', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.05)', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
               <h2 style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '1rem' }}>
-                Start Your 7-Day Trial
+                Start Your 30-Day Trial
               </h2>
               <p style={{ color: 'var(--text-secondary)', fontSize: '1.1rem', marginBottom: '2.5rem', lineHeight: 1.6 }}>
                 We provide a white-glove onboarding experience. Contact our sales team directly to provision your secure sandbox account today.

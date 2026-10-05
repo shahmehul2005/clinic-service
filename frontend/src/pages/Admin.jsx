@@ -107,7 +107,7 @@ const Admin = () => {
             Secret Admin Dashboard
           </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-            Onboard new clinics for a 7-day trial.
+            Onboard new clinics for a 30-day trial.
           </p>
         </div>
 
@@ -231,7 +231,7 @@ const Admin = () => {
           Upgrade Clinic to Permanent
         </h2>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '1.5rem' }}>
-          Remove the 7-day trial limit from a clinic account so they never expire.
+          Remove the 30-day trial limit from a clinic account so they never expire.
         </p>
 
         {upgradeMessage && (

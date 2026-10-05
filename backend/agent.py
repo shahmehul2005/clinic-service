@@ -1093,8 +1093,8 @@ async def onboard_clinic(req: OnboardRequest):
         })
         user_id = auth_response.user.id
         
-        # 2. Insert into Clinics table with 7-day trial
-        trial_end = (get_now() + timedelta(days=7)).isoformat()
+        # 2. Insert into Clinics table with 30-day trial
+        trial_end = (get_now() + timedelta(days=30)).isoformat()
         
         # We use the shared META_PHONE_NUMBER_ID for the MVP
         clinic_response = supabase.table("clinics").insert({
