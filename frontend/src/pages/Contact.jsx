@@ -33,34 +33,52 @@ const Contact = () => {
               </div>
 
               <div style={{ background: 'white', padding: '2rem', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.05)', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'flex-start', gap: '1.25rem' }}>
+                <div style={{ background: '#f0fdf4', color: '#16a34a', padding: '1rem', borderRadius: '50%' }}>
+                  <Mail size={24} />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '0.25rem' }}>Sales Team</h3>
+                  <p style={{ color: 'var(--text-secondary)', marginBottom: '0.5rem', fontSize: '0.95rem' }}>Start a free trial or discuss pricing.</p>
+                  <a href="mailto:support@sanwariyatech.dev" style={{ color: '#16a34a', fontWeight: 600, textDecoration: 'none' }}>support@sanwariyatech.dev</a>
+                </div>
+              </div>
+
+              <div style={{ background: 'white', padding: '2rem', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.05)', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'flex-start', gap: '1.25rem' }}>
                 <div style={{ background: 'var(--v0-blue-light)', color: 'var(--v0-blue)', padding: '1rem', borderRadius: '50%' }}>
                   <Phone size={24} />
                 </div>
                 <div>
-                  <h3 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '0.25rem' }}>Phone</h3>
+                  <h3 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '0.25rem' }}>Phone / WhatsApp</h3>
                   <p style={{ color: 'var(--text-secondary)', marginBottom: '0.5rem', fontSize: '0.95rem' }}>Mon–Sat, 10 AM – 7 PM IST</p>
                   <a href="tel:+919256653646" style={{ color: 'var(--v0-blue)', fontWeight: 600, textDecoration: 'none' }}>+91 92566 53646</a>
                 </div>
               </div>
-
-
             </div>
 
             {/* Contact Form */}
             <div style={{ background: 'white', padding: '2.5rem', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.05)', border: '1px solid var(--border-color)' }}>
               <h2 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '1.5rem' }}>Send us a message</h2>
-              <form onSubmit={(e) => { e.preventDefault(); alert("Thanks for your message. We will get back to you shortly!"); }} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const name = e.target.name.value;
+                  const email = e.target.email.value;
+                  const message = e.target.message.value;
+                  window.location.href = `mailto:support@sanwariyatech.dev?subject=Inquiry from ${encodeURIComponent(name)}&body=${encodeURIComponent(`Name: ${name}\nEmail: ${email}\n\n${message}`)}`;
+                }}
+                style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}
+              >
                 <div>
                   <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.5rem' }}>Full Name</label>
-                  <input type="text" required placeholder="John Doe" className="form-input" />
+                  <input name="name" type="text" required placeholder="John Doe" className="form-input" />
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.5rem' }}>Email Address</label>
-                  <input type="email" required placeholder="john@example.com" className="form-input" />
+                  <input name="email" type="email" required placeholder="john@example.com" className="form-input" />
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.5rem' }}>Message</label>
-                  <textarea required rows="4" placeholder="How can we help you?" className="form-input" style={{ resize: 'vertical', fontFamily: 'inherit' }}></textarea>
+                  <textarea name="message" required rows="4" placeholder="How can we help you?" className="form-input" style={{ resize: 'vertical', fontFamily: 'inherit' }}></textarea>
                 </div>
                 <button type="submit" className="btn-primary" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
                   <Send size={18} /> Send Message

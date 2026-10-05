@@ -335,27 +335,47 @@ def _build_date_buttons(lang: str, now: datetime) -> dict:
     return {
         "type": "interactive",
         "interactive_type": "button",
-        "body": t(lang, f"📅 Which day would you like to book?\n\n• Today: {today}\n• Tomorrow: {tomorrow}\n• Day After: {day_after}",
-                       f"📅 किस दिन बुकिंग करनी है?\n\n• आज: {today}\n• कल: {tomorrow}\n• परसों: {day_after}"),
+        "body": t(lang, f"Which day would you like to book?\n\n\u2022 Today: {today}\n\u2022 Tomorrow: {tomorrow}\n\u2022 Day After: {day_after}",
+                       f"\u0915\u093f\u0938 \u0926\u093f\u0928 \u092c\u0941\u0915\u093f\u0902\u0917 \u0915\u0930\u0928\u0940 \u0939\u0948?\n\n\u2022 \u0906\u091c: {today}\n\u2022 \u0915\u0932: {tomorrow}\n\u2022 \u092a\u0930\u0938\u094b\u0902: {day_after}"),
         "buttons": [
-            {"id": ID_TODAY, "title": t(lang, "📅 Today", "📅 आज")},
-            {"id": ID_TOMORROW, "title": t(lang, "📅 Tomorrow", "📅 कल")},
-            {"id": ID_DAY_AFTER, "title": t(lang, "📅 Day After", "📅 परसों")},
+            {"id": ID_TODAY, "title": t(lang, "Today", "\u0906\u091c")},
+            {"id": ID_TOMORROW, "title": t(lang, "Tomorrow", "\u0915\u0932")},
+            {"id": ID_DAY_AFTER, "title": t(lang, "Day After", "\u092a\u0930\u0938\u094b\u0902")},
         ],
     }
 
 
-def _build_slot_list(slots: list, date_str: str, lang: str) -> dict:
-    """Returns a LIST payload with available time slots."""
+def _build_slot_list(slots: list, date_str: str, lang: str, date_type: str = "future") -> dict:
+    """Returns a LIST payload with available time slots.
+    
+    For today: show slots at 30-min intervals (or nearest available).
+    For tomorrow/day-after: show slots at 60-min intervals.
+    Always caps at 10 items (WhatsApp list limit).
+    """
     try:
         dt = datetime.strptime(date_str, "%Y-%m-%d")
         date_label = dt.strftime("%a, %b %d")
     except Exception:
         date_label = date_str
 
+    # Filter slots by interval based on date type
+    interval_minutes = 30 if date_type == "today" else 60
+    filtered = []
+    last_added_minutes = -999
+    for s in slots:
+        try:
+            slot_dt = datetime.strptime(s, "%H:%M")
+            slot_minutes = slot_dt.hour * 60 + slot_dt.minute
+            if slot_minutes - last_added_minutes >= interval_minutes:
+                filtered.append(s)
+                last_added_minutes = slot_minutes
+        except Exception:
+            filtered.append(s)
+        if len(filtered) >= 10:
+            break
+
     rows = []
-    for s in slots[:10]:
-        # Format slot nicely: "10:00" → "10:00 AM"
+    for s in filtered:
         try:
             slot_dt = datetime.strptime(s, "%H:%M")
             label = slot_dt.strftime("%-I:%M %p") if hasattr(slot_dt, 'strftime') else s
@@ -369,10 +389,10 @@ def _build_slot_list(slots: list, date_str: str, lang: str) -> dict:
     return {
         "type": "interactive",
         "interactive_type": "list",
-        "header": t(lang, f"Available Slots — {date_label}", f"उपलब्ध स्लॉट — {date_label}"),
+        "header": t(lang, f"Available Slots — {date_label}", f"\u0909\u092a\u0932\u092c\u094d\u0927 \u0938\u094d\u0932\u0949\u091f — {date_label}"),
         "body": t(lang, "Select a time slot to book your appointment:",
-                       "अपॉइंटमेंट के लिए एक समय स्लॉट चुनें:"),
-        "button_label": t(lang, "View Slots", "स्लॉट देखें"),
+                       "\u0905\u092a\u0949\u0907\u0902\u091f\u092e\u0947\u0902\u091f \u0915\u0947 \u0932\u093f\u090f \u090f\u0915 \u0938\u092e\u092f \u0938\u094d\u0932\u0949\u091f \u091a\u0941\u0928\u0947\u0902:"),
+        "button_label": t(lang, "View Slots", "\u0938\u094d\u0932\u0949\u091f \u0926\u0947\u0916\u0947\u0902"),
         "rows": rows,
     }
 
@@ -600,16 +620,18 @@ def handle_turn(text, wf, clinics, phone, now, tools, groq_client=None,
             return _build_date_buttons(lang, now), wf, False
 
         # Fetch available slots for that date
+        date_type = "today" if effective == ID_TODAY else "future"
         avail = tools["check_availability"](wf["clinic_id"], selected_date)
         slots = avail.get("all_available_slots") or []
 
-        slot_payload = _build_slot_list(slots, selected_date, lang)
+        slot_payload = _build_slot_list(slots, selected_date, lang, date_type)
         if not slot_payload:
-            reply = t(lang, f"😔 No slots available on {selected_date}. Please choose another day.",
-                           f"😔 {selected_date} को कोई स्लॉट उपलब्ध नहीं है। कोई और दिन चुनें।")
+            reply = t(lang, f"No slots available on {selected_date}. Please choose another day.",
+                           f"{selected_date} \u0915\u094b \u0915\u094b\u0908 \u0938\u094d\u0932\u0949\u091f \u0909\u092a\u0932\u092c\u094d\u0927 \u0928\u0939\u0940\u0902 \u0939\u0948\u0964 \u0915\u094b\u0908 \u0914\u0930 \u0926\u093f\u0928 \u091a\u0941\u0928\u0947\u0902\u0964")
             return reply, wf, False
 
         wf["pending_date"] = selected_date
+        wf["pending_date_type"] = date_type
         wf["step"] = "slot_select"
         return slot_payload, wf, False
 
@@ -626,10 +648,11 @@ def handle_turn(text, wf, clinics, phone, now, tools, groq_client=None,
         if not time_str:
             # Re-show slots
             date_str = wf.get("pending_date")
+            date_type = wf.get("pending_date_type", "future")
             avail = tools["check_availability"](wf["clinic_id"], date_str)
             slots = avail.get("all_available_slots") or []
-            slot_payload = _build_slot_list(slots, date_str, lang)
-            return slot_payload or t(lang, "No slots available.", "कोई स्लॉट नहीं है।"), wf, False
+            slot_payload = _build_slot_list(slots, date_str, lang, date_type)
+            return slot_payload or t(lang, "No slots available.", "\u0915\u094b\u0908 \u0938\u094d\u0932\u0949\u091f \u0928\u0939\u0940\u0902 \u0939\u0948\u0964"), wf, False
 
         date_str = wf.get("pending_date")
         wf["pending_time"] = time_str

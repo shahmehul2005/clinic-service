@@ -273,7 +273,9 @@ const Dashboard = () => {
         token_date: todayStr  // Required so generate_token_atomic SQL can find this row
       };
     } else {
-      const appointmentDateTime = new Date(`${newDate}T${newTime}`).toISOString();
+      // Build ISO string with IST offset to avoid UTC conversion losing 5:30 hrs
+      // e.g. "2026-10-05T16:00" + "+05:30" = "2026-10-05T16:00:00+05:30" (stored as 4pm IST)
+      const appointmentDateTime = `${newDate}T${newTime}:00+05:30`;
       payload = {
         clinic_id: clinicId,
         phone_number: cleanPhone,
