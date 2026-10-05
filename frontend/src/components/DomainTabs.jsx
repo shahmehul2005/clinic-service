@@ -5,7 +5,7 @@ const DomainTabs = () => {
   const { t } = useTranslation();
 
   const features = [
-    { icon: <MessageSquare size={24} />, title: 'WhatsApp Booking', desc: 'Patients book appointments 24/7 via WhatsApp — no calls, no forms.' },
+    { icon: <MessageSquare size={24} />, title: 'WhatsApp Booking', desc: 'Patients book appointments 24/7 via WhatsApp â€” no calls, no forms.' },
     { icon: <Clock size={24} />, title: 'Token Queue System', desc: 'Issue live tokens and let patients track their position from their phone.' },
     { icon: <Star size={24} />, title: 'Google Review Requests', desc: 'Auto-send a Google review link after every completed visit.' },
     { icon: <FileText size={24} />, title: 'Digital Reports', desc: 'Send prescriptions and reports as PDFs or photos directly on WhatsApp.' },
@@ -21,7 +21,7 @@ const DomainTabs = () => {
             {t('domains.title')}
           </h2>
           <p style={{ fontSize: '1.1rem', color: 'var(--text-secondary)', maxWidth: '560px', margin: '0 auto' }}>
-            Everything your clinic needs to run smoothly — all in one place.
+            Everything your clinic needs to run smoothly â€” all in one place.
           </p>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.5rem' }}>
