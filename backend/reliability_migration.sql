@@ -261,13 +261,17 @@ BEGIN
         v_base := COALESCE(c.last_issued_token, 0);
     END IF;
 
-    -- Also check max token_number in today's appointments (covers dashboard-inserted tokens
-    -- that bypass the last_issued_token counter)
+    -- Also check max token_number in today's appointments.
+    -- Uses token_date if set (WhatsApp bookings), falls back to appointment_time date
+    -- (covers dashboard-inserted rows that may not have token_date set)
     SELECT COALESCE(MAX(token_number), 0)
     INTO v_max_from_apts
     FROM appointments
     WHERE clinic_id = p_clinic_id
-      AND token_date = v_today;
+      AND (
+        token_date = v_today
+        OR (token_date IS NULL AND (appointment_time AT TIME ZONE 'Asia/Kolkata')::date = v_today)
+      );
 
     -- Take the higher of the two so we never issue a duplicate
     v_base := GREATEST(v_base, v_max_from_apts);
