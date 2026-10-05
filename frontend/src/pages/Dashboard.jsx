@@ -2,7 +2,7 @@ import { useAuth } from '../context/AuthContext';
 import { 
   Home as HomeIcon, Calendar, Users, 
   Search, Clock, CheckCircle2, User, XCircle, LifeBuoy, HeartPulse, Trash2,
-  FileText, Star, Settings, Plus, Minus, Send, Camera, ChevronDown, ChevronRight, Info
+  FileText, Star, Settings, Plus, Minus, Send, Camera, Info
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useEffect, useState, useMemo } from 'react';
@@ -525,16 +525,17 @@ const Dashboard = () => {
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg-page)', position: 'relative' }}>
-      {/* Sidebar */}
-      <aside style={{ width: '280px', padding: '1.5rem', display: 'flex', flexDirection: 'column', background: 'white', borderRight: '1px solid var(--border-color)' }}>
+      {/* Desktop Sidebar */}
+      <aside className="dash-sidebar">
         
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '2.5rem' }}>
           <div style={{ background: 'var(--v0-blue)', color: 'white', padding: '0.5rem', borderRadius: '8px' }}>
             <HeartPulse size={24} />
           </div>
           <div>
-            <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-main)', lineHeight: 1.2 }}>{clinicName}</div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{t('dashboard.poweredBy')}</div>
+            <div style={{ fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--primary)', marginBottom: '0.1rem' }}>Clinic Buddy</div>
+            <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-main)', lineHeight: 1.2 }}>{clinicName}</div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{t('dashboard.poweredBy')}</div>
           </div>
         </div>
 
@@ -567,8 +568,28 @@ const Dashboard = () => {
         </div>
       </aside>
 
+      {/* Mobile Bottom Nav */}
+      <nav className="dash-bottom-nav">
+        {[
+          ['overview',  <HomeIcon size={22} />,  t('dashboard.overview')],
+          ['upcoming',  <Calendar size={22} />,  'Schedule'],
+          ['patients',  <Users size={22} />,     t('dashboard.patients')],
+          ['reports',   <FileText size={22} />,  t('dashboard.reports')],
+          ['settings',  <Settings size={22} />,  t('dashboard.settings')],
+        ].map(([tab, icon, label]) => (
+          <button
+            key={tab}
+            className={`dash-bottom-nav-item${activeTab === tab ? ' active' : ''}`}
+            onClick={() => setActiveTab(tab)}
+          >
+            {icon}
+            {label}
+          </button>
+        ))}
+      </nav>
+
       {/* Main Content */}
-      <main style={{ flexGrow: 1, padding: '2.5rem', overflowY: 'auto' }}>
+      <main className="dash-main">
         
         {/* Header */}
         <header style={{ marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -583,14 +604,14 @@ const Dashboard = () => {
               {t('dashboard.goodMorningSub')}
             </p>
           </div>
-          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-            <button onClick={handleLogout} className="btn-v0-outline" style={{ padding: '0.75rem 1.5rem', fontSize: '1rem', borderRadius: '8px', color: 'var(--v0-red)', borderColor: 'var(--v0-red)' }}>
+          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            <button onClick={handleLogout} className="btn-v0-outline" style={{ padding: '0.65rem 1.25rem', fontSize: '0.9rem', borderRadius: '8px', color: 'var(--v0-red)', borderColor: 'var(--v0-red)' }}>
               Log Out
             </button>
-            <button onClick={() => i18n.changeLanguage(i18n.language === 'en' ? 'hi' : 'en')} className="btn-v0-outline" style={{ padding: '0.75rem 1.5rem', fontSize: '1rem', borderRadius: '8px' }}>
+            <button onClick={() => i18n.changeLanguage(i18n.language === 'en' ? 'hi' : 'en')} className="btn-v0-outline" style={{ padding: '0.65rem 1.25rem', fontSize: '0.9rem', borderRadius: '8px' }}>
               {i18n.language === 'en' ? 'हिंदी' : 'English'}
             </button>
-            <button onClick={() => setIsModalOpen(true)} className="btn-primary" style={{ padding: '0.75rem 1.5rem', fontSize: '1rem' }}>
+            <button onClick={() => setIsModalOpen(true)} className="btn-primary" style={{ padding: '0.65rem 1.25rem', fontSize: '0.9rem' }}>
               {t('dashboard.newAppointmentBtn')}
             </button>
           </div>

@@ -6,12 +6,14 @@
   --text-main: #0f172a;
   --text-secondary: #64748b;
   --border-color: #e2e8f0;
-  
+
+  --primary: #1b6bc5;
   --v0-blue: #1b6bc5;
   --v0-blue-hover: #1557a0;
   --v0-blue-light: #eff6ff;
   --v0-red: #ef4444;
   --v0-red-light: #fef2f2;
+  --v0-green: #22c55e;
 }
 
 * {
@@ -40,15 +42,15 @@ button {
   font-family: inherit;
 }
 
-/* UI Components */
+/* ── UI Components ── */
 .card {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: 12px;
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+  box-shadow: 0 1px 3px 0 rgba(0,0,0,0.1), 0 1px 2px 0 rgba(0,0,0,0.06);
 }
 
-/* v0 Badges */
+/* Badges */
 .badge {
   display: inline-flex;
   align-items: center;
@@ -59,30 +61,12 @@ button {
   font-weight: 500;
   white-space: nowrap;
 }
+.badge-waiting    { background-color: #dbeafe; color: #1e40af; }
+.badge-checked-in { background-color: #dbeafe; color: #1e40af; }
+.badge-seen       { background-color: white; color: var(--text-main); border: 1px solid var(--border-color); }
+.badge-cancelled  { background-color: var(--v0-red-light); color: var(--v0-red); border: 1px solid #fecaca; }
 
-.badge-waiting {
-  background-color: #dbeafe;
-  color: #1e40af;
-}
-
-.badge-checked-in {
-  background-color: #dbeafe;
-  color: #1e40af;
-}
-
-.badge-seen {
-  background-color: white;
-  color: var(--text-main);
-  border: 1px solid var(--border-color);
-}
-
-.badge-cancelled {
-  background-color: var(--v0-red-light);
-  color: var(--v0-red);
-  border: 1px solid #fecaca;
-}
-
-/* v0 Action Buttons */
+/* Action Buttons */
 .btn-action {
   display: inline-flex;
   align-items: center;
@@ -94,29 +78,21 @@ button {
   transition: all 0.2s ease;
   white-space: nowrap;
 }
-
-.btn-v0-primary {
-  background-color: var(--v0-blue);
-  color: white;
-}
+.btn-v0-primary  { background-color: var(--v0-blue); color: white; }
 .btn-v0-primary:hover { background-color: var(--v0-blue-hover); }
-
-.btn-v0-outline {
-  background-color: white;
-  color: var(--text-main);
-  border: 1px solid var(--border-color);
-}
+.btn-v0-outline  { background-color: white; color: var(--text-main); border: 1px solid var(--border-color); }
 .btn-v0-outline:hover { background-color: #f1f5f9; }
-
-.btn-v0-danger {
-  background-color: var(--v0-red-light);
-  color: var(--v0-red);
-  border: 1px solid #fecaca;
-}
+.btn-v0-danger   { background-color: var(--v0-red-light); color: var(--v0-red); border: 1px solid #fecaca; }
 .btn-v0-danger:hover { background-color: #fee2e2; }
 
-
-/* General Form/Table */
+/* Forms */
+.form-label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-main);
+  margin-bottom: 0.4rem;
+}
 .form-input {
   width: 100%;
   padding: 0.5rem 0.75rem;
@@ -127,13 +103,13 @@ button {
   background-color: var(--bg-card);
   transition: border-color 0.2s;
 }
-
 .form-input:focus {
   outline: none;
   border-color: var(--v0-blue);
   box-shadow: 0 0 0 1px var(--v0-blue);
 }
 
+/* Primary button */
 .btn-primary {
   display: inline-flex;
   align-items: center;
@@ -145,7 +121,144 @@ button {
   background-color: var(--v0-blue);
   color: white;
   transition: all 0.2s ease;
+  cursor: pointer;
+  border: none;
 }
-.btn-primary:hover {
-  background-color: var(--v0-blue-hover);
+.btn-primary:hover { background-color: var(--v0-blue-hover); }
+
+/* btn / btn-outline (landing page) */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.6rem 1.25rem;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  border: none;
+}
+.btn-outline {
+  background: white;
+  color: var(--text-main);
+  border: 1.5px solid var(--border-color);
+}
+.btn-outline:hover { background: var(--bg-page); }
+
+/* ─────────────────────────────────────────
+   DASHBOARD LAYOUT
+   ───────────────────────────────────────── */
+
+.dash-sidebar {
+  width: 280px;
+  min-width: 280px;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  background: white;
+  border-right: 1px solid var(--border-color);
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+
+.dash-main {
+  flex: 1;
+  min-width: 0;
+  padding: 2rem;
+  overflow-x: hidden;
+}
+
+/* Mobile bottom nav — hidden on desktop */
+.dash-bottom-nav {
+  display: none;
+}
+
+/* Scrollable table wrapper */
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ─────────────────────────────────────────
+   RESPONSIVE — tablet / phone
+   ───────────────────────────────────────── */
+@media (max-width: 768px) {
+  /* Hide desktop sidebar */
+  .dash-sidebar {
+    display: none;
+  }
+
+  .dash-main {
+    padding: 1rem;
+    padding-bottom: 5rem; /* room for bottom nav */
+  }
+
+  /* Show bottom nav */
+  .dash-bottom-nav {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: white;
+    border-top: 1px solid var(--border-color);
+    z-index: 100;
+    padding: 0.25rem 0 env(safe-area-inset-bottom, 0px);
+    box-shadow: 0 -2px 12px rgba(0,0,0,0.08);
+  }
+
+  .dash-bottom-nav-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.2rem;
+    padding: 0.5rem 0.25rem;
+    font-size: 0.62rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    cursor: pointer;
+    min-height: 56px;
+    border: none;
+    background: none;
+    transition: color 0.15s;
+  }
+  .dash-bottom-nav-item.active {
+    color: var(--v0-blue);
+  }
+
+  /* Full-screen modals on mobile */
+  .modal-inner {
+    max-width: 100% !important;
+    max-height: 100dvh !important;
+    border-radius: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+  }
+
+  /* Navbar links collapse */
+  .navbar-links { display: none; }
+
+  /* Smaller video */
+  video { max-height: 240px !important; }
+}
+
+@media (max-width: 480px) {
+  .dash-main {
+    padding: 0.625rem;
+    padding-bottom: 5rem;
+  }
+
+  /* Bigger touch targets on inputs */
+  .form-input {
+    padding: 0.7rem 0.875rem;
+    font-size: 1rem; /* prevents iOS auto-zoom on focus */
+  }
+
+  /* Hide lower-priority table columns */
+  .hide-mobile { display: none !important; }
 }
