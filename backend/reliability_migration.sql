@@ -221,6 +221,8 @@ DECLARE
     v_id UUID;
     v_err TEXT;
     v_ahead INTEGER;
+    v_max_from_apts INTEGER;
+    v_base INTEGER;
 BEGIN
     v_now := NOW() AT TIME ZONE 'Asia/Kolkata';
     v_today := v_now::date;
@@ -252,11 +254,24 @@ BEGIN
         RETURN jsonb_build_object('status', 'error', 'message', v_err);
     END IF;
 
+    -- Determine base from clinic's own counter (reset if new day)
     IF c.token_seq_date IS DISTINCT FROM v_today THEN
-        c.last_issued_token := 0;
+        v_base := 0;
+    ELSE
+        v_base := COALESCE(c.last_issued_token, 0);
     END IF;
 
-    v_next := COALESCE(c.last_issued_token, 0) + 1;
+    -- Also check max token_number in today's appointments (covers dashboard-inserted tokens
+    -- that bypass the last_issued_token counter)
+    SELECT COALESCE(MAX(token_number), 0)
+    INTO v_max_from_apts
+    FROM appointments
+    WHERE clinic_id = p_clinic_id
+      AND token_date = v_today;
+
+    -- Take the higher of the two so we never issue a duplicate
+    v_base := GREATEST(v_base, v_max_from_apts);
+    v_next := v_base + 1;
 
     UPDATE clinics
     SET last_issued_token = v_next,
@@ -285,6 +300,7 @@ EXCEPTION WHEN unique_violation THEN
     RETURN jsonb_build_object('status', 'error', 'message', 'CRITICAL: Token assignment collided. Retry generate_token.');
 END;
 $$;
+
 
 -- ---------------------------------------------------------------------------
 -- Cancel / reschedule
