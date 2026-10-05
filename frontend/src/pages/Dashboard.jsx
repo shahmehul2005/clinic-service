@@ -269,7 +269,8 @@ const Dashboard = () => {
         patient_name: newPatientName,
         appointment_time: new Date().toISOString(),
         status: 'booked',
-        token_number: newToken
+        token_number: newToken,
+        token_date: todayStr  // Required so generate_token_atomic SQL can find this row
       };
     } else {
       const appointmentDateTime = new Date(`${newDate}T${newTime}`).toISOString();
