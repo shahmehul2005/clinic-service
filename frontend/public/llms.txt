@@ -1,0 +1,19 @@
+# Sanwariya Tech
+
+> AI-powered WhatsApp receptionist for medical clinics. Automates patient appointment booking, token queue management, reminders, and Google review collection — all via WhatsApp.
+
+## About
+
+Sanwariya Tech provides clinics with an AI receptionist that works 24/7 on WhatsApp. Patients can book appointments, get tokens, check clinic hours and fees, and cancel bookings — all without calling the clinic.
+
+## Key Pages
+
+- [Home](https://sanwariyatech.dev/): Product overview and features
+- [Demo](https://sanwariyatech.dev/demo): Try the AI receptionist demo
+- [Contact](https://sanwariyatech.dev/contact): Get in touch or start a trial
+- [Login](https://sanwariyatech.dev/login): Clinic dashboard login
+
+## Contact
+
+- WhatsApp: +91 92566 53646
+- Email: contact@sanwariyatech.dev

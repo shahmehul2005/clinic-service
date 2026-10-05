@@ -18,6 +18,7 @@ const Navbar = () => {
         <select 
           onChange={changeLanguage} 
           defaultValue={i18n.language}
+          aria-label="Select language"
           style={{ 
             padding: '0.4rem 0.8rem', 
             borderRadius: '6px', 
