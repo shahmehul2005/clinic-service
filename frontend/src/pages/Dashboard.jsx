@@ -157,7 +157,23 @@ const Dashboard = () => {
     });
     
     if (response.ok) {
-      setCurrentServingToken(currentServingToken + 1);
+      const newServingToken = currentServingToken + 1;
+      setCurrentServingToken(newServingToken);
+
+      // Find the appointment being completed and call the status API
+      // so Google review + visit_thanks WhatsApp messages fire correctly
+      const completedApt = appointments.find(
+        apt => apt.token_number === currentServingToken &&
+          new Date(apt.appointment_time).toLocaleDateString() === new Date().toLocaleDateString()
+      );
+      if (completedApt) {
+        fetch(`${apiUrl}/api/admin/appointments/${completedApt.id}/status`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'completed' })
+        }).catch(err => console.error('Status update failed:', err));
+      }
+
       setAppointments(prev => prev.map(apt => {
         if (apt.token_number === currentServingToken && new Date(apt.appointment_time).toLocaleDateString() === new Date().toLocaleDateString()) {
           return { ...apt, status: 'completed' };
@@ -214,10 +230,16 @@ const Dashboard = () => {
     
     let payload = {};
     if (bookingMode === 'token') {
-      const today = new Date().toLocaleDateString();
-      const todaysApts = appointments.filter(a => new Date(a.appointment_time).toLocaleDateString() === today);
-      const maxToken = todaysApts.reduce((max, apt) => Math.max(max, apt.token_number || 0), 0);
-      
+      // Query Supabase for the true max token today (includes WhatsApp-booked tokens)
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const { data: tokenData } = await supabase
+        .from('appointments')
+        .select('token_number')
+        .eq('clinic_id', clinicId)
+        .gte('appointment_time', `${todayStr} 00:00:00`)
+        .lte('appointment_time', `${todayStr} 23:59:59`);
+      const maxToken = (tokenData || []).reduce((max, apt) => Math.max(max, apt.token_number || 0), 0);
+
       payload = {
         clinic_id: clinicId,
         phone_number: cleanPhone,
@@ -420,12 +442,14 @@ const Dashboard = () => {
     return <span className="badge badge-waiting"><Clock size={14}/> {status}</span>;
   };
 
-  // Stats calculation
+  // Stats calculation — today only
+  const todayDateStr = new Date().toLocaleDateString();
+  const todayAll = appointments.filter(a => new Date(a.appointment_time).toLocaleDateString() === todayDateStr);
   const stats = {
-    waiting: appointments.filter(a => a.status === 'booked').length,
-    checkedIn: appointments.filter(a => a.status === 'arrived').length,
-    seen: appointments.filter(a => a.status === 'completed').length,
-    total: appointments.length
+    waiting: todayAll.filter(a => a.status === 'booked').length,
+    checkedIn: todayAll.filter(a => a.status === 'arrived').length,
+    seen: todayAll.filter(a => a.status === 'completed').length,
+    total: todayAll.length
   };
 
   if (isTrialExpired) {
