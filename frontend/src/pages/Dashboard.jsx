@@ -2,7 +2,7 @@ import { useAuth } from '../context/AuthContext';
 import { 
   Home as HomeIcon, Calendar, Users, 
   Search, Clock, CheckCircle2, User, XCircle, LifeBuoy, HeartPulse, Trash2,
-  FileText, Star, Settings, Plus, Minus, Send
+  FileText, Star, Settings, Plus, Minus, Send, Camera, ChevronDown, ChevronRight, Info
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useEffect, useState, useMemo } from 'react';
@@ -37,6 +37,11 @@ const Dashboard = () => {
   const [reportImageFile, setReportImageFile] = useState(null);
   const [reportSending, setReportSending] = useState(false);
   const [toast, setToast] = useState(null);
+  // Patient details modal
+  const [patientDetailModal, setPatientDetailModal] = useState(null); // { phone, name, visits, lastVisit }
+  const [patientDetails, setPatientDetails] = useState({ age: '', blood_group: '', allergies: '', conditions: '', emergency_contact: '', notes: '' });
+  const [patientDetailSaving, setPatientDetailSaving] = useState(false);
+  const [patientSearchMode, setPatientSearchMode] = useState('all'); // 'all'|'date'
 
   // Settings state
   const [settings, setSettings] = useState({ google_review_link: '', doctor_name: '', clinic_address: '', consultation_fee: '', maps_link: '', clinic_phone: '' });
@@ -355,10 +360,15 @@ const Dashboard = () => {
       }
     });
     // Filter by search query if in patients tab
-    return Array.from(map.values()).filter(p => 
-      p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-      p.phone.includes(searchQuery)
-    ).sort((a, b) => new Date(b.lastVisit) - new Date(a.lastVisit));
+    const searchLower = searchQuery.toLowerCase();
+    return Array.from(map.values()).filter(p => {
+      if (!searchLower) return true;
+      return (
+        p.name.toLowerCase().includes(searchLower) ||
+        p.phone.includes(searchQuery) ||
+        new Date(p.lastVisit).toLocaleDateString().includes(searchQuery)
+      );
+    }).sort((a, b) => new Date(b.lastVisit) - new Date(a.lastVisit));
   }, [appointments, searchQuery]);
 
   // ---- Toast helper ----
@@ -825,62 +835,152 @@ const Dashboard = () => {
           </>
         ) : activeTab === 'patients' ? (
           <>
-            {/* Patients Tab View */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '1.5rem' }}>
+            {/* Patient Details Modal */}
+            {patientDetailModal && (
+              <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+                <div className="card" style={{ width: '100%', maxWidth: '480px', padding: '2rem', maxHeight: '90vh', overflowY: 'auto' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                    <div>
+                      <h3 style={{ fontWeight: 700, fontSize: '1.1rem', color: 'var(--text-main)' }}>{patientDetailModal.name}</h3>
+                      <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{patientDetailModal.phone} · {patientDetailModal.visits} visit{patientDetailModal.visits !== 1 ? 's' : ''}</div>
+                    </div>
+                    <button onClick={() => setPatientDetailModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.25rem', color: 'var(--text-secondary)' }}>✕</button>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    {[['Age', 'age', 'e.g. 35'], ['Blood Group', 'blood_group', 'e.g. B+'], ['Known Allergies', 'allergies', 'e.g. Penicillin'], ['Chronic Conditions', 'conditions', 'e.g. Diabetes, Hypertension'], ['Emergency Contact', 'emergency_contact', 'e.g. +91 98765 43210'], ['Notes', 'notes', 'Any additional info']].map(([label, key, ph]) => (
+                      <div key={key}>
+                        <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.3rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</label>
+                        {key === 'notes' ? (
+                          <textarea rows={3} className="form-input" style={{ resize: 'vertical', fontFamily: 'inherit' }} value={patientDetails[key]} onChange={e => setPatientDetails(d => ({ ...d, [key]: e.target.value }))} placeholder={ph} />
+                        ) : (
+                          <input type="text" className="form-input" value={patientDetails[key]} onChange={e => setPatientDetails(d => ({ ...d, [key]: e.target.value }))} placeholder={ph} />
+                        )}
+                      </div>
+                    ))}
+                    <button
+                      onClick={async () => {
+                        setPatientDetailSaving(true);
+                        // Store in appointments as metadata on the most recent appointment
+                        const latestApt = [...appointments].filter(a => a.phone_number === patientDetailModal.phone).sort((a,b) => new Date(b.appointment_time)-new Date(a.appointment_time))[0];
+                        if (latestApt) {
+                          await supabase.from('appointments').update({ patient_details: patientDetails }).eq('id', latestApt.id);
+                        }
+                        setPatientDetailSaving(false);
+                        setPatientDetailModal(null);
+                        showToast('Patient details saved!');
+                      }}
+                      className="btn btn-primary"
+                      style={{ marginTop: '0.5rem' }}
+                      disabled={patientDetailSaving}
+                    >
+                      {patientDetailSaving ? 'Saving…' : 'Save Details'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Header + Search */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
               <div>
                 <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-main)' }}>{t('dashboard.patientsViewTitle')}</h2>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>{t('dashboard.patientsViewSub')}</p>
               </div>
-              <div style={{ position: 'relative', width: '300px' }}>
-                <Search size={18} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
-                <input 
-                  type="text" 
-                  placeholder={t('dashboard.searchPh')} 
+              <div style={{ position: 'relative', minWidth: '220px', flex: 1, maxWidth: '320px' }}>
+                <Search size={16} style={{ position: 'absolute', left: '0.875rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
+                <input
+                  type="text"
+                  placeholder="Search name, phone, or date…"
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="form-input" 
-                  style={{ paddingLeft: '2.5rem', borderRadius: '999px' }} 
+                  onChange={e => setSearchQuery(e.target.value)}
+                  className="form-input"
+                  style={{ paddingLeft: '2.5rem', borderRadius: '999px' }}
                 />
               </div>
             </div>
 
-            <div className="card" style={{ overflow: 'hidden' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                <thead>
-                  <tr style={{ background: '#f0f9ff', borderBottom: '1px solid var(--border-color)' }}>
-                    <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{t('dashboard.thName')}</th>
-                    <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{t('dashboard.thPhone')}</th>
-                    <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{t('dashboard.thTotalVisits')}</th>
-                    <th style={{ padding: '1rem 1.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{t('dashboard.thLastVisit')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {uniquePatients.length === 0 ? (
-                    <tr>
-                      <td colSpan="4" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-secondary)' }}>{t('dashboard.noPatients')}</td>
-                    </tr>
-                  ) : (
-                    uniquePatients.map((apt, index) => (
-                      <tr key={apt.phone} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                        <td style={{ padding: '1.25rem 1.5rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                          <div style={{ background: 'var(--v0-blue-light)', color: 'var(--v0-blue)', padding: '0.5rem', borderRadius: '50%' }}>
-                            <User size={20} />
-                          </div>
-                          <div>
-                            <div style={{ fontWeight: 600, color: 'var(--text-main)', fontSize: '0.95rem' }}>{apt.name}</div>
-                          </div>
-                        </td>
-                        <td style={{ padding: '1.25rem 1.5rem', color: 'var(--text-main)', fontSize: '0.9rem', fontWeight: 500 }}>{apt.phone}</td>
-                        <td style={{ padding: '1.25rem 1.5rem', color: 'var(--text-main)', fontSize: '0.9rem', fontWeight: 500 }}>
-                          <span style={{ background: '#f1f5f9', padding: '0.25rem 0.75rem', borderRadius: '1rem', fontSize: '0.8rem', fontWeight: 600 }}>{apt.visits}</span>
-                        </td>
-                        <td style={{ padding: '1.25rem 1.5rem', color: 'var(--text-main)', fontSize: '0.9rem', fontWeight: 500 }}>{new Date(apt.lastVisit).toLocaleDateString()}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+            {/* Date-wise groups */}
+            {(() => {
+              const today = new Date();
+              today.setHours(0,0,0,0);
+              const yesterday = new Date(today); yesterday.setDate(yesterday.getDate()-1);
+
+              const groups = [];
+              const todayPts = uniquePatients.filter(p => {
+                const d = new Date(p.lastVisit); d.setHours(0,0,0,0);
+                return d.getTime() === today.getTime();
+              });
+              const yestPts = uniquePatients.filter(p => {
+                const d = new Date(p.lastVisit); d.setHours(0,0,0,0);
+                return d.getTime() === yesterday.getTime();
+              });
+              const olderPts = uniquePatients.filter(p => {
+                const d = new Date(p.lastVisit); d.setHours(0,0,0,0);
+                return d < yesterday;
+              });
+
+              if (todayPts.length) groups.push({ label: 'Today', color: '#0ea5e9', bg: '#f0f9ff', pts: todayPts });
+              if (yestPts.length) groups.push({ label: 'Yesterday', color: '#7c3aed', bg: '#faf5ff', pts: yestPts });
+              if (olderPts.length) groups.push({ label: 'Earlier', color: 'var(--text-secondary)', bg: 'var(--bg-card)', pts: olderPts });
+
+              if (groups.length === 0) return (
+                <div className="card" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                  {searchQuery ? `No patients matching "${searchQuery}"` : t('dashboard.noPatients')}
+                </div>
+              );
+
+              return groups.map(({ label, color, bg, pts }) => (
+                <div key={label} style={{ marginBottom: '1.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.75rem' }}>
+                    <span style={{ background: bg, color, border: `1px solid ${color}22`, padding: '0.2rem 0.8rem', borderRadius: '999px', fontSize: '0.78rem', fontWeight: 700 }}>{label}</span>
+                    <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>{pts.length} patient{pts.length !== 1 ? 's' : ''}</span>
+                  </div>
+                  <div className="card" style={{ overflow: 'hidden' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                      <thead>
+                        <tr style={{ background: '#f0f9ff', borderBottom: '1px solid var(--border-color)' }}>
+                          <th style={{ padding: '0.75rem 1.25rem', fontSize: '0.72rem', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase' }}>Name</th>
+                          <th style={{ padding: '0.75rem 1.25rem', fontSize: '0.72rem', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase' }}>Phone</th>
+                          <th style={{ padding: '0.75rem 1.25rem', fontSize: '0.72rem', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase' }}>Visits</th>
+                          <th style={{ padding: '0.75rem 1.25rem', fontSize: '0.72rem', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase' }}>Last Visit</th>
+                          <th style={{ padding: '0.75rem 1.25rem', fontSize: '0.72rem', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase' }}></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pts.map(p => (
+                          <tr key={p.phone} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                            <td style={{ padding: '1rem 1.25rem' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                <div style={{ background: 'var(--v0-blue-light)', color: 'var(--v0-blue)', padding: '0.4rem', borderRadius: '50%' }}><User size={16} /></div>
+                                <span style={{ fontWeight: 600, color: 'var(--text-main)', fontSize: '0.9rem' }}>{p.name}</span>
+                              </div>
+                            </td>
+                            <td style={{ padding: '1rem 1.25rem', color: 'var(--text-main)', fontSize: '0.875rem' }}>{p.phone}</td>
+                            <td style={{ padding: '1rem 1.25rem' }}>
+                              <span style={{ background: '#f1f5f9', padding: '0.2rem 0.7rem', borderRadius: '1rem', fontSize: '0.8rem', fontWeight: 600 }}>{p.visits}</span>
+                            </td>
+                            <td style={{ padding: '1rem 1.25rem', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>{new Date(p.lastVisit).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+                            <td style={{ padding: '1rem 1.25rem', textAlign: 'right' }}>
+                              <button
+                                onClick={() => {
+                                  setPatientDetailModal(p);
+                                  // Pre-load existing details if any
+                                  const latestApt = [...appointments].filter(a => a.phone_number === p.phone).sort((a,b) => new Date(b.appointment_time)-new Date(a.appointment_time))[0];
+                                  setPatientDetails(latestApt?.patient_details || { age: '', blood_group: '', allergies: '', conditions: '', emergency_contact: '', notes: '' });
+                                }}
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', background: '#f0f9ff', color: '#0369a1', border: '1px solid #bae6fd', padding: '0.4rem 0.875rem', borderRadius: '8px', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}
+                              >
+                                <Info size={14} /> Details
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ));
+            })()}
           </>
         ) : activeTab === 'reports' ? (
           <>
@@ -1071,22 +1171,39 @@ const Dashboard = () => {
 
             <form onSubmit={handleSendReport} style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
 
-              {/* Image Upload Option */}
+              {/* Image Upload + Camera Option */}
               <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '10px', padding: '1rem' }}>
                 <label style={{ display: 'block', fontSize: '0.88rem', fontWeight: 700, color: '#0369a1', marginBottom: '0.5rem' }}>
                   📷 Upload Lab Report / Scan Image (optional)
                 </label>
-                <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: '0.6rem' }}>
-                  Upload a photo or scan of a lab report or prescription image. It will be wrapped in a PDF and sent directly. If uploaded, the typed fields below are ignored.
+                <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
+                  Upload or capture a photo of a lab report. It will be wrapped in a PDF and sent directly.
                 </p>
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/jpg,image/webp"
-                  onChange={e => setReportImageFile(e.target.files?.[0] || null)}
-                  style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-main)' }}
-                />
+                <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                  {/* Normal file picker */}
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', background: 'white', border: '1px solid #bae6fd', borderRadius: '8px', padding: '0.5rem 1rem', fontSize: '0.85rem', fontWeight: 600, color: '#0369a1', cursor: 'pointer' }}>
+                    📁 Choose File
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/jpg,image/webp"
+                      onChange={e => setReportImageFile(e.target.files?.[0] || null)}
+                      style={{ display: 'none' }}
+                    />
+                  </label>
+                  {/* Direct camera capture — no phone storage, just streams to app */}
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', background: '#0369a1', border: 'none', borderRadius: '8px', padding: '0.5rem 1rem', fontSize: '0.85rem', fontWeight: 600, color: 'white', cursor: 'pointer' }}>
+                    <Camera size={15} /> Open Camera
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={e => setReportImageFile(e.target.files?.[0] || null)}
+                      style={{ display: 'none' }}
+                    />
+                  </label>
+                </div>
                 {reportImageFile && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem', background: '#dcfce7', border: '1px solid #86efac', borderRadius: '6px', padding: '0.4rem 0.7rem', fontSize: '0.82rem', color: '#166534' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.75rem', background: '#dcfce7', border: '1px solid #86efac', borderRadius: '6px', padding: '0.4rem 0.7rem', fontSize: '0.82rem', color: '#166534' }}>
                     ✅ <strong>{reportImageFile.name}</strong> selected — will send as PDF
                     <button type="button" onClick={() => setReportImageFile(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626', fontSize: '1rem', lineHeight: 1 }}>✕</button>
                   </div>
