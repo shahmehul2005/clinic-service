@@ -39,7 +39,6 @@ const Dashboard = () => {
   const [reportSending, setReportSending] = useState(false);
   const [showCameraModal, setShowCameraModal] = useState(false);
   const [cameraStream, setCameraStream] = useState(null);
-  const [cameraFallbackNeeded, setCameraFallbackNeeded] = useState(false);
   const videoRef = useRef(null);
   const nativeCameraRef = useRef(null);
   const [toast, setToast] = useState(null);
@@ -488,7 +487,7 @@ const Dashboard = () => {
 
   const startCamera = async (e) => {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.isSecureContext) {
-      setCameraFallbackNeeded(true);
+      if (nativeCameraRef.current) nativeCameraRef.current.click();
       return;
     }
     
@@ -503,7 +502,7 @@ const Dashboard = () => {
       setShowCameraModal(true);
     } catch (err) {
       console.error(err);
-      setCameraFallbackNeeded(true);
+      if (nativeCameraRef.current) nativeCameraRef.current.click();
     }
   };
 
@@ -1348,6 +1347,15 @@ const Dashboard = () => {
                   <button type="button" onClick={startCamera} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', background: '#0369a1', border: 'none', borderRadius: '8px', padding: '0.5rem 1rem', fontSize: '0.85rem', fontWeight: 600, color: 'white', cursor: 'pointer' }}>
                     <Camera size={15} /> Open Camera
                   </button>
+                  {/* Hidden fallback for HTTP / non-secure contexts */}
+                  <input
+                    ref={nativeCameraRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={handleImageSelect}
+                    style={{ display: 'none' }}
+                  />
                 </div>
                 {reportImageFile && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.75rem', background: '#dcfce7', border: '1px solid #86efac', borderRadius: '6px', padding: '0.4rem 0.7rem', fontSize: '0.82rem', color: '#166534' }}>
@@ -1455,34 +1463,6 @@ const Dashboard = () => {
             <button onClick={stopCamera} style={{ background: 'none', border: 'none', color: 'white', fontSize: '1.2rem' }}>Cancel</button>
             <button onClick={capturePhoto} style={{ width: '70px', height: '70px', borderRadius: '50%', background: 'white', border: '5px solid #0369a1' }}></button>
             <div style={{ width: '50px' }}></div>
-          </div>
-        </div>
-      )}
-
-      {/* Fallback Camera Trigger Modal */}
-      {cameraFallbackNeeded && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 100000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: 'white', padding: '2rem', borderRadius: '12px', width: '90%', maxWidth: '400px', textAlign: 'center' }}>
-            <h3 style={{ marginTop: 0, color: 'var(--text-main)' }}>In-App Camera Unavailable</h3>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '1.5rem' }}>
-              Your browser does not support the in-app camera or permissions were denied. You can still use your device's native camera.
-            </p>
-            <div style={{ display: 'flex', gap: '1rem' }}>
-              <button onClick={() => setCameraFallbackNeeded(false)} style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'transparent', cursor: 'pointer' }}>Cancel</button>
-              <label style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', background: '#0369a1', color: 'white', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-                <Camera size={16} /> Open Camera
-                <input
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  onChange={(e) => {
-                    setCameraFallbackNeeded(false);
-                    handleImageSelect(e);
-                  }}
-                  style={{ display: 'none' }}
-                />
-              </label>
-            </div>
           </div>
         </div>
       )}
