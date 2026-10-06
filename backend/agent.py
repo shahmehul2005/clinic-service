@@ -1112,19 +1112,20 @@ async def onboard_clinic(req: OnboardRequest):
         user_id = get_user_id_by_email(req.admin_email)
         
         if not user_id:
-            # Create user and require email verification
+            # Create user with confirmed email — admin is vouching for this email
             auth_response = supabase.auth.admin.create_user({
                 "email": req.admin_email,
                 "password": req.password,
-                "email_confirm": False
+                "email_confirm": True
             })
             user_id = auth_response.user.id
-            
-            # Send the signup verification email
-            try:
-                supabase.auth.resend({"type": "signup", "email": req.admin_email})
-            except Exception as resend_err:
-                print(f"Failed to send verification email: {resend_err}")
+        else:
+            # User exists (e.g. they signed in with Google before the clinic was registered).
+            # Force-confirm their email and set the password so email+password login works.
+            update_payload = {"email_confirm": True}
+            if req.password:
+                update_payload["password"] = req.password
+            supabase.auth.admin.update_user_by_id(user_id, update_payload)
         
         # 2. Insert into Clinics table with 30-day trial
         trial_end = (get_now() + timedelta(days=30)).isoformat()

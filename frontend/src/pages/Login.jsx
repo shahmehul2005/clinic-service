@@ -34,12 +34,23 @@ const Login = () => {
     e.preventDefault();
     setError('');
     setLoading(true);
-    const success = await login(email, password);
-    setLoading(false);
-    if (success) {
-      navigate('/dashboard');
-    } else {
-      setError('Invalid email or password. Please try again.');
+    try {
+      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+      setLoading(false);
+      if (signInError) {
+        if (signInError.message?.toLowerCase().includes('email not confirmed')) {
+          setError('Your email is not yet confirmed. Please check your inbox or contact support.');
+        } else if (signInError.message?.toLowerCase().includes('invalid login credentials') || signInError.message?.toLowerCase().includes('invalid email or password')) {
+          setError('Incorrect email or password. If you signed up with Google, use "Continue with Google" instead. Or reset your password below.');
+        } else {
+          setError(signInError.message || 'Login failed. Please try again.');
+        }
+      } else {
+        navigate('/dashboard');
+      }
+    } catch (err) {
+      setLoading(false);
+      setError('Something went wrong. Please try again.');
     }
   };
 
@@ -57,7 +68,7 @@ const Login = () => {
     setResetLoading(true);
     setResetMsg('');
     const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
-      redirectTo: `${window.location.origin}/dashboard`
+      redirectTo: `${window.location.origin}/reset-password`
     });
     setResetLoading(false);
     if (error) {

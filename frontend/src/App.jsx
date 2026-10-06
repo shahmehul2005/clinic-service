@@ -13,6 +13,7 @@ import Demo from './pages/Demo';
 import Contact from './pages/Contact';
 import Admin from './pages/Admin';
 import ProtectedRoute from './components/ProtectedRoute';
+import ResetPassword from './pages/ResetPassword';
 
 const Home = () => (
   <>
@@ -36,6 +37,7 @@ function App() {
       <Route path="/data-deletion" element={<DataDeletion />} />
       <Route path="/contact" element={<Contact />} />
       <Route path="/secret-admin-onboard" element={<Admin />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
     </Routes>
   );
 }
