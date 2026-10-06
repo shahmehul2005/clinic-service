@@ -69,7 +69,7 @@ const Dashboard = () => {
 
       if (!currentClinicId && user?.email) {
         // Try to find if a clinic was created for this email via secret admin onboard
-        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+        const apiUrl = import.meta.env.PROD ? (import.meta.env.VITE_API_URL || '') : '';
         try {
           const response = await fetch(`${apiUrl}/api/clinics/by-email?email=${encodeURIComponent(user.email)}`);
           const data = await response.json();
@@ -183,7 +183,7 @@ const Dashboard = () => {
 
   const handleUpdateStatus = async (id, newStatus) => {
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const apiUrl = import.meta.env.PROD ? (import.meta.env.VITE_API_URL || '') : '';
       const response = await fetch(`${apiUrl}/api/admin/appointments/${id}/status`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -225,7 +225,7 @@ const Dashboard = () => {
       alert("No patients waiting in the live queue!");
       return;
     }
-    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    const apiUrl = import.meta.env.PROD ? (import.meta.env.VITE_API_URL || '') : '';
     const response = await fetch(`${apiUrl}/api/queue/call-next`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -248,7 +248,7 @@ const Dashboard = () => {
 
   const handleCancelToken = async (aptId) => {
     if (!window.confirm("Are you sure you want to cancel this patient's token?")) return;
-    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    const apiUrl = import.meta.env.PROD ? (import.meta.env.VITE_API_URL || '') : '';
     const response = await fetch(`${apiUrl}/api/queue/cancel-token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -264,7 +264,7 @@ const Dashboard = () => {
 
   const handleCloseDay = async () => {
     if (!window.confirm("Are you sure you want to close the clinic for today? This will cancel all remaining appointments for today!")) return;
-    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    const apiUrl = import.meta.env.PROD ? (import.meta.env.VITE_API_URL || '') : '';
     const response = await fetch(`${apiUrl}/api/queue/close-day`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -537,7 +537,7 @@ const Dashboard = () => {
     if (!reportModal) return;
     setReportSending(true);
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const apiUrl = import.meta.env.PROD ? (import.meta.env.VITE_API_URL || '') : '';
 
       // If an image was uploaded, use the image endpoint
       if (reportImageFile) {
@@ -583,7 +583,7 @@ const Dashboard = () => {
     e.preventDefault();
     setSettingsSaving(true);
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const apiUrl = import.meta.env.PROD ? (import.meta.env.VITE_API_URL || '') : '';
       const resp = await fetch(`${apiUrl}/api/clinics/${clinicId}/settings`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },

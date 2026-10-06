@@ -27,7 +27,7 @@ const Admin = () => {
     setError(null);
 
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const apiUrl = import.meta.env.PROD ? (import.meta.env.VITE_API_URL || '') : '';
       const response = await fetch(`${apiUrl}/api/admin/onboard`, {
         method: 'POST',
         headers: {
@@ -68,7 +68,7 @@ const Admin = () => {
     setUpgradeError(null);
 
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const apiUrl = import.meta.env.PROD ? (import.meta.env.VITE_API_URL || '') : '';
       const response = await fetch(`${apiUrl}/api/admin/upgrade`, {
         method: 'POST',
         headers: {
