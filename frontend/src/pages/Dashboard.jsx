@@ -738,7 +738,7 @@ const Dashboard = () => {
               </div>
             )}
 
-            <div className="card" style={{ overflow: 'hidden' }}>
+            <div className="card" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                 <thead>
                   <tr style={{ background: '#f0f9ff', borderBottom: '1px solid var(--border-color)' }}>
@@ -839,7 +839,7 @@ const Dashboard = () => {
               </div>
             </div>
 
-            <div className="card" style={{ overflow: 'hidden' }}>
+            <div className="card" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                 <thead>
                   <tr style={{ background: '#f0f9ff', borderBottom: '1px solid var(--border-color)' }}>
@@ -993,7 +993,7 @@ const Dashboard = () => {
                     <span style={{ background: bg, color, border: `1px solid ${color}22`, padding: '0.2rem 0.8rem', borderRadius: '999px', fontSize: '0.78rem', fontWeight: 700 }}>{label}</span>
                     <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>{pts.length} patient{pts.length !== 1 ? 's' : ''}</span>
                   </div>
-                  <div className="card" style={{ overflow: 'hidden' }}>
+                  <div className="card" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                       <thead>
                         <tr style={{ background: '#f0f9ff', borderBottom: '1px solid var(--border-color)' }}>
@@ -1046,7 +1046,7 @@ const Dashboard = () => {
               <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-main)' }}>📋 {t('dashboard.reportsTitle')}</h2>
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>{t('dashboard.reportsSub')}</p>
             </div>
-            <div className="card" style={{ overflow: 'hidden' }}>
+            <div className="card" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                 <thead>
                   <tr style={{ background: '#f0f9ff', borderBottom: '1px solid var(--border-color)' }}>

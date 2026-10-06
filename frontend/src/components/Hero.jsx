@@ -69,7 +69,7 @@ const Hero = () => {
       </div>
 
       {/* ── PRICING ── */}
-      <div style={{ padding: '5rem 1.5rem', background: 'var(--bg-page)', borderTop: '1px solid var(--border-color)' }}>
+      <div id="pricing" style={{ padding: '5rem 1.5rem', background: 'var(--bg-page)', borderTop: '1px solid var(--border-color)' }}>
         <div style={{ maxWidth: '900px', margin: '0 auto', textAlign: 'center' }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', background: '#eff6ff', color: 'var(--primary)', padding: '0.4rem 1rem', borderRadius: '999px', fontSize: '0.8rem', fontWeight: 600, marginBottom: '1.5rem' }}>
             <Zap size={14} /> Simple, Transparent Pricing
