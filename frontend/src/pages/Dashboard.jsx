@@ -448,17 +448,19 @@ const Dashboard = () => {
       return;
     }
     
-    // Compress image to avoid mobile browser memory errors with large camera files
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = (event) => {
+    // Use URL.createObjectURL instead of FileReader(base64) to heavily reduce RAM usage on mobile devices
+    try {
       const img = new Image();
-      img.src = event.target.result;
+      const objectUrl = URL.createObjectURL(file);
+      
       img.onload = () => {
+        URL.revokeObjectURL(objectUrl); // Clean up memory immediately
+        
         const canvas = document.createElement('canvas');
         let width = img.width;
         let height = img.height;
-        const MAX_DIM = 1200;
+        // Even smaller max dim to guarantee mobile compatibility
+        const MAX_DIM = 800;
         
         if (width > height && width > MAX_DIM) {
           height = Math.round((height * MAX_DIM) / width);
@@ -474,14 +476,29 @@ const Dashboard = () => {
         ctx.drawImage(img, 0, 0, width, height);
         
         canvas.toBlob((blob) => {
-          const compressedFile = new File([blob], file.name, {
-            type: 'image/jpeg',
-            lastModified: Date.now()
-          });
-          setReportImageFile(compressedFile);
-        }, 'image/jpeg', 0.8);
+          if (blob) {
+            const compressedFile = new File([blob], file.name, {
+              type: 'image/jpeg',
+              lastModified: Date.now()
+            });
+            setReportImageFile(compressedFile);
+          } else {
+            // Fallback if canvas fails
+            setReportImageFile(file);
+          }
+        }, 'image/jpeg', 0.7);
       };
-    };
+      
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        setReportImageFile(file); // Fallback to raw file if parsing fails
+      };
+      
+      img.src = objectUrl;
+    } catch (err) {
+      console.error("Compression failed, using raw file:", err);
+      setReportImageFile(file);
+    }
   };
 
   const handleSendReport = async (e) => {
