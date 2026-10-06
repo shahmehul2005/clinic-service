@@ -39,6 +39,7 @@ const Dashboard = () => {
   const [reportSending, setReportSending] = useState(false);
   const [showCameraModal, setShowCameraModal] = useState(false);
   const videoRef = useRef(null);
+  const nativeCameraRef = useRef(null);
   const [toast, setToast] = useState(null);
   // Patient details modal
   const [patientDetailModal, setPatientDetailModal] = useState(null); // { phone, name, visits, lastVisit }
@@ -477,18 +478,29 @@ const Dashboard = () => {
     }
   };
 
-  const startCamera = async () => {
-    setShowCameraModal(true);
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
-    } catch (err) {
-      console.error(err);
-      showToast('Camera access denied or unavailable', 'error');
-      setShowCameraModal(false);
+  const startCamera = (e) => {
+    // If not in a secure context (like testing on local HTTP) or if camera API is missing,
+    // WebRTC will fail. Fallback to the native OS camera via a hidden file input.
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.isSecureContext) {
+      if (nativeCameraRef.current) nativeCameraRef.current.click();
+      return;
     }
+    
+    setShowCameraModal(true);
+    
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+      .catch(() => navigator.mediaDevices.getUserMedia({ video: true })) // Fallback to any camera
+      .then(stream => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+      })
+      .catch(err => {
+        console.error(err);
+        setShowCameraModal(false);
+        // Final fallback if they denied permission but still want to use the native file picker
+        if (nativeCameraRef.current) nativeCameraRef.current.click();
+      });
   };
 
   const stopCamera = () => {
@@ -1331,6 +1343,15 @@ const Dashboard = () => {
                   <button type="button" onClick={startCamera} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', background: '#0369a1', border: 'none', borderRadius: '8px', padding: '0.5rem 1rem', fontSize: '0.85rem', fontWeight: 600, color: 'white', cursor: 'pointer' }}>
                     <Camera size={15} /> Open Camera
                   </button>
+                  {/* Hidden fallback for HTTP / non-secure contexts */}
+                  <input
+                    ref={nativeCameraRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={handleImageSelect}
+                    style={{ display: 'none' }}
+                  />
                 </div>
                 {reportImageFile && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.75rem', background: '#dcfce7', border: '1px solid #86efac', borderRadius: '6px', padding: '0.4rem 0.7rem', fontSize: '0.82rem', color: '#166534' }}>
