@@ -480,8 +480,9 @@ const Dashboard = () => {
 
   const startCamera = (e) => {
     // If not in a secure context (like testing on local HTTP) or if camera API is missing,
+    // WebRTC will fail. Fallback to the native OS camera via a hidden file input.
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.isSecureContext) {
-      showToast('Camera requires an HTTPS connection. Please use the "Choose File" button instead.', 'error');
+      if (nativeCameraRef.current) nativeCameraRef.current.click();
       return;
     }
     
@@ -497,7 +498,8 @@ const Dashboard = () => {
       .catch(err => {
         console.error(err);
         setShowCameraModal(false);
-        showToast('Camera access denied. Please use the "Choose File" button instead.', 'error');
+        // Final fallback if they denied permission but still want to use the native file picker
+        if (nativeCameraRef.current) nativeCameraRef.current.click();
       });
   };
 
@@ -1341,6 +1343,15 @@ const Dashboard = () => {
                   <button type="button" onClick={startCamera} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', background: '#0369a1', border: 'none', borderRadius: '8px', padding: '0.5rem 1rem', fontSize: '0.85rem', fontWeight: 600, color: 'white', cursor: 'pointer' }}>
                     <Camera size={15} /> Open Camera
                   </button>
+                  {/* Hidden fallback for HTTP / non-secure contexts */}
+                  <input
+                    ref={nativeCameraRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={handleImageSelect}
+                    style={{ display: 'none' }}
+                  />
                 </div>
                 {reportImageFile && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.75rem', background: '#dcfce7', border: '1px solid #86efac', borderRadius: '6px', padding: '0.4rem 0.7rem', fontSize: '0.82rem', color: '#166534' }}>
