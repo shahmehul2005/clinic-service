@@ -6,7 +6,7 @@ import {
   FileText, Star, Settings, Plus, Minus, Send, Camera, Info
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { useTranslation } from 'react-i18next';
 
@@ -37,6 +37,8 @@ const Dashboard = () => {
   });
   const [reportImageFile, setReportImageFile] = useState(null);
   const [reportSending, setReportSending] = useState(false);
+  const [showCameraModal, setShowCameraModal] = useState(false);
+  const videoRef = useRef(null);
   const [toast, setToast] = useState(null);
   // Patient details modal
   const [patientDetailModal, setPatientDetailModal] = useState(null); // { phone, name, visits, lastVisit }
@@ -180,12 +182,17 @@ const Dashboard = () => {
 
   const handleUpdateStatus = async (id, newStatus) => {
     try {
-      const { error } = await supabase
-        .from('appointments')
-        .update({ status: newStatus })
-        .eq('id', id);
-
-      if (error) throw error;
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const response = await fetch(`${apiUrl}/api/admin/appointments/${id}/status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to update status');
+      }
 
       // Update local state immediately for instant UI feedback
       setAppointments(prev =>
@@ -468,6 +475,49 @@ const Dashboard = () => {
       // Fallback
       setReportImageFile(file);
     }
+  };
+
+  const startCamera = async () => {
+    setShowCameraModal(true);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('Camera access denied or unavailable', 'error');
+      setShowCameraModal(false);
+    }
+  };
+
+  const stopCamera = () => {
+    if (videoRef.current && videoRef.current.srcObject) {
+      videoRef.current.srcObject.getTracks().forEach(track => track.stop());
+    }
+    setShowCameraModal(false);
+  };
+
+  const capturePhoto = async () => {
+    if (!videoRef.current) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = videoRef.current.videoWidth;
+    canvas.height = videoRef.current.videoHeight;
+    canvas.getContext('2d').drawImage(videoRef.current, 0, 0);
+    
+    stopCamera();
+    
+    canvas.toBlob(async (blob) => {
+      if (!blob) return;
+      const file = new File([blob], `camera_${Date.now()}.jpg`, { type: 'image/jpeg' });
+      try {
+        const options = { maxSizeMB: 1, maxWidthOrHeight: 800, useWebWorker: true, initialQuality: 0.7 };
+        const compressedBlob = await imageCompression(file, options);
+        setReportImageFile(new File([compressedBlob], file.name, { type: 'image/jpeg' }));
+      } catch (e) {
+        setReportImageFile(file);
+      }
+    }, 'image/jpeg', 0.9);
   };
 
   const handleSendReport = async (e) => {
@@ -1277,17 +1327,10 @@ const Dashboard = () => {
                       style={{ display: 'none' }}
                     />
                   </label>
-                  {/* Direct camera capture — no phone storage, just streams to app */}
-                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', background: '#0369a1', border: 'none', borderRadius: '8px', padding: '0.5rem 1rem', fontSize: '0.85rem', fontWeight: 600, color: 'white', cursor: 'pointer' }}>
+                  {/* Direct camera capture inside browser */}
+                  <button type="button" onClick={startCamera} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', background: '#0369a1', border: 'none', borderRadius: '8px', padding: '0.5rem 1rem', fontSize: '0.85rem', fontWeight: 600, color: 'white', cursor: 'pointer' }}>
                     <Camera size={15} /> Open Camera
-                    <input
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      onChange={handleImageSelect}
-                      style={{ display: 'none' }}
-                    />
-                  </label>
+                  </button>
                 </div>
                 {reportImageFile && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.75rem', background: '#dcfce7', border: '1px solid #86efac', borderRadius: '6px', padding: '0.4rem 0.7rem', fontSize: '0.82rem', color: '#166534' }}>
@@ -1383,6 +1426,18 @@ const Dashboard = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* In-Browser Camera Modal */}
+      {showCameraModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'black', zIndex: 100000, display: 'flex', flexDirection: 'column' }}>
+          <video ref={videoRef} autoPlay playsInline style={{ flex: 1, width: '100%', objectFit: 'cover' }} />
+          <div style={{ padding: '2rem', display: 'flex', justifyContent: 'space-around', background: 'rgba(0,0,0,0.8)' }}>
+            <button onClick={stopCamera} style={{ background: 'none', border: 'none', color: 'white', fontSize: '1.2rem' }}>Cancel</button>
+            <button onClick={capturePhoto} style={{ width: '70px', height: '70px', borderRadius: '50%', background: 'white', border: '5px solid #0369a1' }}></button>
+            <div style={{ width: '50px' }}></div>
           </div>
         </div>
       )}
