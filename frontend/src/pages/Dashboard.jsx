@@ -38,6 +38,7 @@ const Dashboard = () => {
   const [reportImageFile, setReportImageFile] = useState(null);
   const [reportSending, setReportSending] = useState(false);
   const [showCameraModal, setShowCameraModal] = useState(false);
+  const [cameraStream, setCameraStream] = useState(null);
   const videoRef = useRef(null);
   const nativeCameraRef = useRef(null);
   const [toast, setToast] = useState(null);
@@ -180,6 +181,12 @@ const Dashboard = () => {
       supabase.removeChannel(channel);
     };
   }, [clinicId]);
+
+  useEffect(() => {
+    if (cameraStream && videoRef.current) {
+      videoRef.current.srcObject = cameraStream;
+    }
+  }, [cameraStream, showCameraModal]);
 
   const handleUpdateStatus = async (id, newStatus) => {
     try {
@@ -478,35 +485,32 @@ const Dashboard = () => {
     }
   };
 
-  const startCamera = (e) => {
-    // If not in a secure context (like testing on local HTTP) or if camera API is missing,
-    // WebRTC will fail. Fallback to the native OS camera via a hidden file input.
+  const startCamera = async (e) => {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.isSecureContext) {
       if (nativeCameraRef.current) nativeCameraRef.current.click();
       return;
     }
     
-    setShowCameraModal(true);
-    
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
-      .catch(() => navigator.mediaDevices.getUserMedia({ video: true })) // Fallback to any camera
-      .then(stream => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-        }
-      })
-      .catch(err => {
-        console.error(err);
-        setShowCameraModal(false);
-        // Final fallback if they denied permission but still want to use the native file picker
-        if (nativeCameraRef.current) nativeCameraRef.current.click();
-      });
+    try {
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      } catch (e) {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      }
+      setCameraStream(stream);
+      setShowCameraModal(true);
+    } catch (err) {
+      console.error(err);
+      if (nativeCameraRef.current) nativeCameraRef.current.click();
+    }
   };
 
   const stopCamera = () => {
-    if (videoRef.current && videoRef.current.srcObject) {
-      videoRef.current.srcObject.getTracks().forEach(track => track.stop());
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(track => track.stop());
     }
+    setCameraStream(null);
     setShowCameraModal(false);
   };
 
