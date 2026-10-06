@@ -481,7 +481,7 @@ const Dashboard = () => {
   const startCamera = (e) => {
     // If not in a secure context (like testing on local HTTP) or if camera API is missing,
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.isSecureContext) {
-      showToast('In-App Camera requires HTTPS. Please use the Device Camera button.', 'error');
+      showToast('Camera requires an HTTPS connection. Please use the "Choose File" button instead.', 'error');
       return;
     }
     
@@ -497,7 +497,7 @@ const Dashboard = () => {
       .catch(err => {
         console.error(err);
         setShowCameraModal(false);
-        showToast('Camera access denied. Please use the Device Camera button.', 'error');
+        showToast('Camera access denied. Please use the "Choose File" button instead.', 'error');
       });
   };
 
@@ -1338,21 +1338,9 @@ const Dashboard = () => {
                     />
                   </label>
                   {/* Direct camera capture inside browser */}
-                  <button type="button" onClick={startCamera} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', background: '#0284c7', border: 'none', borderRadius: '8px', padding: '0.5rem 1rem', fontSize: '0.85rem', fontWeight: 600, color: 'white', cursor: 'pointer' }}>
-                    <Camera size={15} /> In-App Camera
+                  <button type="button" onClick={startCamera} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', background: '#0369a1', border: 'none', borderRadius: '8px', padding: '0.5rem 1rem', fontSize: '0.85rem', fontWeight: 600, color: 'white', cursor: 'pointer' }}>
+                    <Camera size={15} /> Open Camera
                   </button>
-                  {/* Explicit visible fallback for HTTP / non-secure contexts */}
-                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', background: '#0f172a', border: 'none', borderRadius: '8px', padding: '0.5rem 1rem', fontSize: '0.85rem', fontWeight: 600, color: 'white', cursor: 'pointer' }}>
-                    <Camera size={15} /> Device Camera
-                    <input
-                      ref={nativeCameraRef}
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      onChange={handleImageSelect}
-                      style={{ display: 'none' }}
-                    />
-                  </label>
                 </div>
                 {reportImageFile && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.75rem', background: '#dcfce7', border: '1px solid #86efac', borderRadius: '6px', padding: '0.4rem 0.7rem', fontSize: '0.82rem', color: '#166534' }}>
