@@ -139,6 +139,17 @@ def is_clinic_active(clinic_id: str) -> bool:
         print(f"Error checking clinic active status: {e}")
     return False
 
+@app.get("/api/clinics/by-email")
+async def get_clinic_by_email(email: str):
+    """Bypasses RLS to find if a clinic exists for an email. Needed when user_metadata is lost by Google Auth."""
+    try:
+        resp = supabase.table("clinics").select("id").eq("admin_email", email).execute()
+        if resp.data:
+            return {"clinic_id": resp.data[0]["id"]}
+        return {"clinic_id": None}
+    except Exception as e:
+        return {"clinic_id": None}
+
 # Rate Limiting Helper
 def check_and_increment_usage() -> bool:
     """Atomically increment monthly LLM usage. Fail closed on errors."""

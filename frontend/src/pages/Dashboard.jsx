@@ -65,26 +65,32 @@ const Dashboard = () => {
 
       if (!currentClinicId && user?.email) {
         // Try to find if a clinic was created for this email via secret admin onboard
-        const { data: clinic } = await supabase
-          .from('clinics')
-          .select('id')
-          .eq('admin_email', user.email)
-          .single();
-          
-        if (clinic) {
-          currentClinicId = clinic.id;
-          setClinicId(currentClinicId);
-          // Optional: Update user metadata for future logins
-          await supabase.auth.updateUser({ data: { clinic_id: currentClinicId } });
-        } else {
-          // No clinic found -> boot them out
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+        try {
+          const response = await fetch(`${apiUrl}/api/clinics/by-email?email=${encodeURIComponent(user.email)}`);
+          const data = await response.json();
+          if (data && data.clinic_id) {
+            currentClinicId = data.clinic_id;
+            setClinicId(currentClinicId);
+            // Optional: Update user metadata for future logins
+            await supabase.auth.updateUser({ data: { clinic_id: currentClinicId } });
+          } else {
+            // No clinic found -> boot them out
+            const url = '/login?error=no_clinic';
+            await logout();
+            window.location.href = url;
+            return;
+          }
+        } catch (err) {
+          console.error("Error fetching clinic by email", err);
+          const url = '/login?error=no_clinic';
           await logout();
-          navigate('/login?error=no_clinic');
+          window.location.href = url;
           return;
         }
       } else if (!currentClinicId) {
           await logout();
-          navigate('/login?error=no_clinic');
+          window.location.href = '/login?error=no_clinic';
           return;
       }
 
