@@ -1078,6 +1078,18 @@ async def redirect_to_google_review(clinic_id: str):
     except Exception as e:
         return Response(content=str(e), status_code=500)
 
+def get_user_id_by_email(email: str):
+    page = 1
+    while True:
+        users = supabase.auth.admin.list_users(page=page, per_page=100)
+        if not users:
+            break
+        for u in users:
+            if u.email == email:
+                return u.id
+        page += 1
+    return None
+
 @app.post("/api/admin/onboard")
 async def onboard_clinic(req: OnboardRequest):
     """Secure endpoint to create a new clinic and its auth user."""
@@ -1085,13 +1097,23 @@ async def onboard_clinic(req: OnboardRequest):
         return Response(status_code=401, content="Invalid PIN")
         
     try:
-        # 1. Create Supabase Auth User using Admin API
-        auth_response = supabase.auth.admin.create_user({
-            "email": req.admin_email,
-            "password": req.password,
-            "email_confirm": True
-        })
-        user_id = auth_response.user.id
+        # 1. Check if user exists or create new Supabase Auth User
+        user_id = get_user_id_by_email(req.admin_email)
+        
+        if not user_id:
+            # Create user and require email verification
+            auth_response = supabase.auth.admin.create_user({
+                "email": req.admin_email,
+                "password": req.password,
+                "email_confirm": False
+            })
+            user_id = auth_response.user.id
+            
+            # Send the signup verification email
+            try:
+                supabase.auth.resend({"type": "signup", "email": req.admin_email})
+            except Exception as resend_err:
+                print(f"Failed to send verification email: {resend_err}")
         
         # 2. Insert into Clinics table with 30-day trial
         trial_end = (get_now() + timedelta(days=30)).isoformat()

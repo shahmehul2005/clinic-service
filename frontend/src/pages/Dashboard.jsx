@@ -48,8 +48,8 @@ const Dashboard = () => {
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   
-  // Extract user's dynamic clinic ID, or default to mock for testing
-  const clinicId = user?.user_metadata?.clinic_id || "00000000-0000-0000-0000-000000000001";
+  // Extract user's dynamic clinic ID
+  const [clinicId, setClinicId] = useState(user?.user_metadata?.clinic_id || null);
   
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -60,11 +60,43 @@ const Dashboard = () => {
   const [submitError, setSubmitError] = useState('');
 
   useEffect(() => {
-    const fetchClinicData = async () => {
+    const initializeDashboard = async () => {
+      let currentClinicId = clinicId;
+
+      if (!currentClinicId && user?.email) {
+        // Try to find if a clinic was created for this email via secret admin onboard
+        const { data: clinic } = await supabase
+          .from('clinics')
+          .select('id')
+          .eq('admin_email', user.email)
+          .single();
+          
+        if (clinic) {
+          currentClinicId = clinic.id;
+          setClinicId(currentClinicId);
+          // Optional: Update user metadata for future logins
+          await supabase.auth.updateUser({ data: { clinic_id: currentClinicId } });
+        } else {
+          // No clinic found -> boot them out
+          await logout();
+          navigate('/login?error=no_clinic');
+          return;
+        }
+      } else if (!currentClinicId) {
+          await logout();
+          navigate('/login?error=no_clinic');
+          return;
+      }
+
+      fetchClinicData(currentClinicId);
+      fetchAppointments(currentClinicId);
+    };
+
+    const fetchClinicData = async (cid) => {
       const { data, error } = await supabase
         .from('clinics')
         .select('business_name, trial_end_date, booking_mode, current_serving_token, google_review_link, doctor_name, clinic_address, consultation_fee, maps_link, clinic_phone')
-        .eq('id', clinicId)
+        .eq('id', cid)
         .single();
         
       if (!error && data) {
@@ -81,7 +113,7 @@ const Dashboard = () => {
           const { data: todayDone } = await supabase
             .from('appointments')
             .select('id')
-            .eq('clinic_id', clinicId)
+            .eq('clinic_id', cid)
             .eq('status', 'completed')
             .gte('appointment_time', `${todayStr} 00:00:00`)
             .lte('appointment_time', `${todayStr} 23:59:59`)
@@ -89,7 +121,7 @@ const Dashboard = () => {
           if (!todayDone || todayDone.length === 0) {
             // No completions today — counter is stale, reset it
             setCurrentServingToken(0);
-            await supabase.from('clinics').update({ current_serving_token: 0 }).eq('id', clinicId);
+            await supabase.from('clinics').update({ current_serving_token: 0 }).eq('id', cid);
           } else {
             setCurrentServingToken(storedToken);
           }
@@ -111,11 +143,11 @@ const Dashboard = () => {
       }
     };
     
-    const fetchAppointments = async () => {
+    const fetchAppointments = async (cid) => {
       const { data, error } = await supabase
         .from('appointments')
         .select('*')
-        .eq('clinic_id', clinicId)
+        .eq('clinic_id', cid)
         .order('appointment_time', { ascending: true });
         
       if (!error && data) {
@@ -123,13 +155,14 @@ const Dashboard = () => {
       }
     };
     
-    fetchClinicData();
-    fetchAppointments();
+    initializeDashboard();
+
+    if (!clinicId) return; // Prevent channel subscription if no clinic yet
 
     const channel = supabase
       .channel('custom-all-channel')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments', filter: `clinic_id=eq.${clinicId}` }, (payload) => {
-        fetchAppointments();
+        fetchAppointments(clinicId);
       })
       .subscribe();
 

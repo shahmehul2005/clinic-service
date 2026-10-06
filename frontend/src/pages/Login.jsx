@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -21,6 +21,14 @@ const Login = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
   const { t } = useTranslation();
+
+  // Handle URL errors
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('error') === 'no_clinic') {
+      setError('No clinic is associated with this email. Contact sales to add your clinic.');
+    }
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
