@@ -441,6 +441,49 @@ const Dashboard = () => {
     });
   };
 
+  const handleImageSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) {
+      setReportImageFile(null);
+      return;
+    }
+    
+    // Compress image to avoid mobile browser memory errors with large camera files
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target.result;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        const MAX_DIM = 1200;
+        
+        if (width > height && width > MAX_DIM) {
+          height = Math.round((height * MAX_DIM) / width);
+          width = MAX_DIM;
+        } else if (height > MAX_DIM) {
+          width = Math.round((width * MAX_DIM) / height);
+          height = MAX_DIM;
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        canvas.toBlob((blob) => {
+          const compressedFile = new File([blob], file.name, {
+            type: 'image/jpeg',
+            lastModified: Date.now()
+          });
+          setReportImageFile(compressedFile);
+        }, 'image/jpeg', 0.8);
+      };
+    };
+  };
+
   const handleSendReport = async (e) => {
     e.preventDefault();
     if (!reportModal) return;
@@ -1244,7 +1287,7 @@ const Dashboard = () => {
                     <input
                       type="file"
                       accept="image/jpeg,image/png,image/jpg,image/webp"
-                      onChange={e => setReportImageFile(e.target.files?.[0] || null)}
+                      onChange={handleImageSelect}
                       style={{ display: 'none' }}
                     />
                   </label>
@@ -1255,7 +1298,7 @@ const Dashboard = () => {
                       type="file"
                       accept="image/*"
                       capture="environment"
-                      onChange={e => setReportImageFile(e.target.files?.[0] || null)}
+                      onChange={handleImageSelect}
                       style={{ display: 'none' }}
                     />
                   </label>

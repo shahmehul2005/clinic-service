@@ -571,6 +571,7 @@ async def reminder_worker():
     while True:
         try:
             process_due_reminders()
+            process_time_based_reminders()
         except Exception as e:
             print(f"reminder_worker: {e}")
         await asyncio.sleep(60)
@@ -579,8 +580,32 @@ async def reminder_worker():
 # Back-compat name used by older tests
 chat_sessions = {}
 
+def check_and_increment_usage() -> bool:
+    """Checks the monthly API usage limit and increments it. Returns False if limit is reached."""
+    try:
+        month_year = get_now().strftime("%Y-%m")
+        resp = supabase.table("api_usage").select("message_count").eq("month_year", month_year).execute()
+        
+        if not resp.data:
+            # First message of the month
+            supabase.table("api_usage").insert({"month_year": month_year, "message_count": 1}).execute()
+            return True
+            
+        count = resp.data[0]["message_count"]
+        if count >= 900:
+            print(f"MONTHLY LIMIT REACHED ({count}/900). Pausing all WhatsApp services.")
+            return False
+            
+        supabase.table("api_usage").update({"message_count": count + 1}).eq("month_year", month_year).execute()
+        return True
+    except Exception as e:
+        print(f"Error checking API usage: {e}")
+        return True # Fail open so we don't break the system
+
 def send_whatsapp_message(to_phone: str, message: str):
     """Sends a text message back to the user via Meta Graph API."""
+    if not check_and_increment_usage():
+        return
     if not META_ACCESS_TOKEN or not META_PHONE_NUMBER_ID:
         print("WARNING: Meta API keys are missing. Message not sent.")
         return
@@ -616,6 +641,8 @@ def send_whatsapp_interactive(to_phone: str, interactive_payload: dict):
       }
     Falls back to plain text if Meta API keys are missing.
     """
+    if not check_and_increment_usage():
+        return
     if not META_ACCESS_TOKEN or not META_PHONE_NUMBER_ID:
         print("WARNING: Meta API keys missing. Interactive message not sent.")
         return
@@ -673,6 +700,8 @@ def send_whatsapp_interactive(to_phone: str, interactive_payload: dict):
 
 def send_whatsapp_template(to_phone: str, template_name: str, components: list = None, language_code: str = "en"):
     """Sends a pre-approved template message via Meta Graph API."""
+    if not check_and_increment_usage():
+        return
     if not META_ACCESS_TOKEN or not META_PHONE_NUMBER_ID:
         print("WARNING: Meta API keys are missing. Template not sent.")
         return
@@ -1428,14 +1457,12 @@ async def update_clinic_settings(clinic_id: str, req: ClinicSettingsRequest):
 class RemindersRequest(BaseModel):
     pin: str
 
-@app.post("/api/internal/send-reminders")
-async def send_appointment_reminders(req: RemindersRequest):
-    """Sends 1-hour reminder templates to time-based appointments. Called by GitHub Actions cron."""
-    from fastapi.responses import JSONResponse
-    if req.pin != ADMIN_PIN:
-        return JSONResponse(status_code=401, content={"detail": "Invalid PIN"})
+
+def process_time_based_reminders():
+    """Runs continuously in the background loop to send 1-hour reminders."""
     try:
         now = get_now()
+        # Find appointments between 55 and 65 mins from now
         window_start = now + timedelta(minutes=55)
         window_end = now + timedelta(minutes=65)
         ws = window_start.strftime("%Y-%m-%d %H:%M:%S")
@@ -1480,7 +1507,18 @@ async def send_appointment_reminders(req: RemindersRequest):
         return {"status": "success", "reminders_sent": sent}
     except Exception as e:
         print(f"Error sending reminders: {e}")
-        return JSONResponse(status_code=500, content={"detail": str(e)})
+        return {"status": "error", "detail": str(e)}
+
+@app.post("/api/internal/send-reminders")
+async def send_appointment_reminders(req: RemindersRequest):
+    """Sends 1-hour reminder templates to time-based appointments. Called by GitHub Actions cron."""
+    from fastapi.responses import JSONResponse
+    if req.pin != ADMIN_PIN:
+        return JSONResponse(status_code=401, content={"detail": "Invalid PIN"})
+    result = process_time_based_reminders()
+    if result.get("status") == "error":
+        return JSONResponse(status_code=500, content={"detail": result.get("detail")})
+    return result
 
 
 # 5. Webhook Ingestion (POST) for WhatsApp Messages

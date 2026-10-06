@@ -1,4 +1,5 @@
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
+import { useAuth } from './context/AuthContext';
 import Navbar from './components/Navbar';
 import Hero from './components/Hero';
 import Features from './components/Features';
@@ -15,15 +16,23 @@ import Admin from './pages/Admin';
 import ProtectedRoute from './components/ProtectedRoute';
 import ResetPassword from './pages/ResetPassword';
 
-const Home = () => (
-  <>
-    <Navbar />
-    <Hero />
-    <DomainTabs />
-    <Features />
-    <Footer />
-  </>
-);
+const Home = () => {
+  const { user, loading } = useAuth();
+  
+  if (!loading && user) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return (
+    <>
+      <Navbar />
+      <Hero />
+      <DomainTabs />
+      <Features />
+      <Footer />
+    </>
+  );
+};
 
 function App() {
   return (
