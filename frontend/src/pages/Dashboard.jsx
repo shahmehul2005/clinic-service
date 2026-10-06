@@ -1,4 +1,5 @@
 import { useAuth } from '../context/AuthContext';
+import imageCompression from 'browser-image-compression';
 import { 
   Home as HomeIcon, Calendar, Users, 
   Search, Clock, CheckCircle2, User, XCircle, LifeBuoy, HeartPulse, Trash2,
@@ -441,62 +442,30 @@ const Dashboard = () => {
     });
   };
 
-  const handleImageSelect = (e) => {
+  const handleImageSelect = async (e) => {
     const file = e.target.files?.[0];
     if (!file) {
       setReportImageFile(null);
       return;
     }
     
-    // Use URL.createObjectURL instead of FileReader(base64) to heavily reduce RAM usage on mobile devices
     try {
-      const img = new Image();
-      const objectUrl = URL.createObjectURL(file);
-      
-      img.onload = () => {
-        URL.revokeObjectURL(objectUrl); // Clean up memory immediately
-        
-        const canvas = document.createElement('canvas');
-        let width = img.width;
-        let height = img.height;
-        // Even smaller max dim to guarantee mobile compatibility
-        const MAX_DIM = 800;
-        
-        if (width > height && width > MAX_DIM) {
-          height = Math.round((height * MAX_DIM) / width);
-          width = MAX_DIM;
-        } else if (height > MAX_DIM) {
-          width = Math.round((width * MAX_DIM) / height);
-          height = MAX_DIM;
-        }
-        
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, width, height);
-        
-        canvas.toBlob((blob) => {
-          if (blob) {
-            const compressedFile = new File([blob], file.name, {
-              type: 'image/jpeg',
-              lastModified: Date.now()
-            });
-            setReportImageFile(compressedFile);
-          } else {
-            // Fallback if canvas fails
-            setReportImageFile(file);
-          }
-        }, 'image/jpeg', 0.7);
+      // Use robust web-worker based compression to avoid main-thread OOM crashes on mobile
+      const options = {
+        maxSizeMB: 1,
+        maxWidthOrHeight: 800,
+        useWebWorker: true,
+        initialQuality: 0.7
       };
-      
-      img.onerror = () => {
-        URL.revokeObjectURL(objectUrl);
-        setReportImageFile(file); // Fallback to raw file if parsing fails
-      };
-      
-      img.src = objectUrl;
+      const compressedBlob = await imageCompression(file, options);
+      const compressedFile = new File([compressedBlob], file.name, {
+        type: 'image/jpeg',
+        lastModified: Date.now(),
+      });
+      setReportImageFile(compressedFile);
     } catch (err) {
-      console.error("Compression failed, using raw file:", err);
+      console.error("Compression failed:", err);
+      // Fallback
       setReportImageFile(file);
     }
   };
