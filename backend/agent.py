@@ -103,7 +103,7 @@ def get_all_clinics() -> list:
     """Retrieves all active registered clinics and their live stats."""
     try:
         response = supabase.table("clinics") \
-            .select("id, business_name, trial_end_date, booking_mode, current_serving_token, closed_date, working_days, working_hours, consultation_fee, maps_link, clinic_phone") \
+            .select("id, business_name, trial_end_date, booking_mode, current_serving_token, closed_date, working_days, working_hours, consultation_fee, maps_link, clinic_phone, token_seq_date") \
             .execute()
         if response.data:
             now = get_now()
@@ -114,6 +114,9 @@ def get_all_clinics() -> list:
                 if not trial_end or datetime.fromisoformat(trial_end.replace('Z', '+00:00')) > now.astimezone():
                     # Calculate token queue if token mode
                     if c.get("booking_mode") == "token":
+                        if c.get("token_seq_date") != today_str:
+                            c["current_serving_token"] = 0
+                            
                         t_resp = supabase.table("appointments").select("token_number").eq("clinic_id", c["id"]).gte("appointment_time", f"{today_str} 00:00:00").lte("appointment_time", f"{today_str} 23:59:59").execute()
                         max_t = max([r["token_number"] for r in t_resp.data if r["token_number"] is not None] or [0]) if t_resp.data else 0
                         cur_t = c.get("current_serving_token") or 0

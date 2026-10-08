@@ -328,7 +328,10 @@ BEGIN
     WHERE clinic_id = p_clinic_id
       AND phone_number = p_phone_number
       AND status = 'booked'
-      AND appointment_time >= v_now
+      AND (
+          appointment_time >= v_now
+          OR (token_number IS NOT NULL AND COALESCE(token_date, (appointment_time AT TIME ZONE 'Asia/Kolkata')::date) = v_now::date)
+      )
     ORDER BY appointment_time ASC
     LIMIT 1
     FOR UPDATE;
