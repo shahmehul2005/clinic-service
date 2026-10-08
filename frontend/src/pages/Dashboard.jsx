@@ -47,6 +47,10 @@ const Dashboard = () => {
   const [patientDetails, setPatientDetails] = useState({ age: '', blood_group: '', allergies: '', conditions: '', emergency_contact: '', notes: '' });
   const [patientDetailSaving, setPatientDetailSaving] = useState(false);
   const [patientSearchMode, setPatientSearchMode] = useState('all'); // 'all'|'date'
+  // Broadcast state
+  const [broadcastMessage, setBroadcastMessage] = useState('');
+  const [broadcastSending, setBroadcastSending] = useState(false);
+  const [broadcastResult, setBroadcastResult] = useState(null);
 
   // Settings state
   const [settings, setSettings] = useState({ google_review_link: '', doctor_name: '', clinic_address: '', consultation_fee: '', maps_link: '', clinic_phone: '' });
@@ -486,6 +490,11 @@ const Dashboard = () => {
   };
 
   const startCamera = async (e) => {
+    // Always use native camera input on mobile (avoids WebRTC low-memory crashes)
+    if (/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)) {
+      if (nativeCameraRef.current) nativeCameraRef.current.click();
+      return;
+    }
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.isSecureContext) {
       if (nativeCameraRef.current) nativeCameraRef.current.click();
       return;
@@ -494,14 +503,14 @@ const Dashboard = () => {
     try {
       let stream;
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } } });
       } catch (e) {
-        stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        stream = await navigator.mediaDevices.getUserMedia({ video: { width: { max: 640 }, height: { max: 480 } } });
       }
       setCameraStream(stream);
       setShowCameraModal(true);
     } catch (err) {
-      console.error(err);
+      console.error('Camera error, falling back to file picker:', err);
       if (nativeCameraRef.current) nativeCameraRef.current.click();
     }
   };
@@ -606,9 +615,30 @@ const Dashboard = () => {
     }
   };
 
-  const getReason = (idx) => {
-    const reasons = ["Annual check-up", "Follow-up visit", "Lab results", "Knee pain consult", "Prescription refill", "Skin check"];
-    return reasons[idx % reasons.length];
+  // Broadcast message handler
+  const handleBroadcast = async () => {
+    if (!broadcastMessage.trim()) return;
+    setBroadcastSending(true);
+    setBroadcastResult(null);
+    try {
+      const apiUrl = import.meta.env.PROD ? (import.meta.env.VITE_API_URL || '') : '';
+      const resp = await fetch(`${apiUrl}/api/clinics/${clinicId}/broadcast`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: broadcastMessage })
+      });
+      const data = await resp.json();
+      if (resp.ok) {
+        setBroadcastResult({ ok: true, msg: `✅ Broadcast sent to ${data.count || 0} patients!` });
+        setBroadcastMessage('');
+      } else {
+        setBroadcastResult({ ok: false, msg: `❌ Failed: ${data.detail || 'Unknown error'}` });
+      }
+    } catch (err) {
+      setBroadcastResult({ ok: false, msg: '❌ Network error. Check if backend is running.' });
+    } finally {
+      setBroadcastSending(false);
+    }
   };
 
   const renderBadge = (status) => {
@@ -665,7 +695,7 @@ const Dashboard = () => {
             <HeartPulse size={24} />
           </div>
           <div>
-            <div style={{ fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--primary)', marginBottom: '0.1rem' }}>Clinic Buddy</div>
+            <div style={{ fontSize: '0.85rem', fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--primary)', marginBottom: '0.1rem' }}>Clinic Buddy</div>
             <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-main)', lineHeight: 1.2 }}>{clinicName}</div>
             <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{t('dashboard.poweredBy')}</div>
           </div>
@@ -862,10 +892,7 @@ const Dashboard = () => {
                           <div style={{ background: 'var(--v0-blue-light)', color: 'var(--v0-blue)', padding: '0.5rem', borderRadius: '50%' }}>
                             <User size={20} />
                           </div>
-                          <div>
-                            <div style={{ fontWeight: 600, color: 'var(--text-main)', fontSize: '0.95rem' }}>{apt.patient_name || 'Unknown'}</div>
-                            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{getReason(index)}</div>
-                          </div>
+                          <div style={{ fontWeight: 600, color: 'var(--text-main)', fontSize: '0.95rem' }}>{apt.patient_name || 'Unknown'}</div>
                         </td>
                         <td style={{ padding: '1.25rem 1.5rem', color: 'var(--text-main)', fontSize: '0.9rem', fontWeight: 500 }}>{apt.phone_number}</td>
                         {bookingMode !== 'token' && (
@@ -876,9 +903,16 @@ const Dashboard = () => {
                         </td>
                         <td style={{ padding: '1.25rem 1.5rem', textAlign: 'right', height: '76px' }}>
                           {bookingMode === 'token' ? (
-                            <button onClick={() => handleCancelToken(apt.id)} className="btn-action btn-v0-danger">
-                              <XCircle size={16} /> {t('dashboard.actionCancel')}
-                            </button>
+                            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', alignItems: 'center', height: '100%' }}>
+                              {apt.status !== 'cancelled' && (
+                                <button onClick={() => handleCancelToken(apt.id)} className="btn-action btn-v0-danger">
+                                  <XCircle size={16} /> {t('dashboard.actionCancel')}
+                                </button>
+                              )}
+                              <button onClick={() => handleDeleteAppointment(apt.id)} style={{ padding: '0.5rem', color: 'var(--text-secondary)' }} title="Delete Record">
+                                <Trash2 size={16} style={{ cursor: 'pointer' }} onMouseOver={(e) => e.currentTarget.style.color = 'var(--v0-red)'} onMouseOut={(e) => e.currentTarget.style.color = 'var(--text-secondary)'} />
+                              </button>
+                            </div>
                           ) : (
                             <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', alignItems: 'center', height: '100%' }}>
                               {apt.status === 'booked' && (
@@ -1050,6 +1084,38 @@ const Dashboard = () => {
                   style={{ paddingLeft: '2.5rem', borderRadius: '999px' }}
                 />
               </div>
+            </div>
+
+            {/* Broadcast Message */}
+            <div className="card" style={{ padding: '1.5rem', marginBottom: '1.5rem', background: '#f0f9ff', border: '1px solid #bae6fd' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700, color: '#0369a1', marginBottom: '0.75rem', fontSize: '0.95rem' }}>
+                <Send size={16} /> Broadcast Message to All Patients
+              </div>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
+                Send a WhatsApp message to all patients who have visited. Use for holiday notices, new services, etc.
+              </p>
+              <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                <textarea
+                  rows={2}
+                  value={broadcastMessage}
+                  onChange={e => setBroadcastMessage(e.target.value)}
+                  placeholder="Type your broadcast message here…"
+                  className="form-input"
+                  style={{ flex: 1, minWidth: '200px', resize: 'vertical', fontFamily: 'inherit' }}
+                />
+                <button
+                  onClick={handleBroadcast}
+                  disabled={broadcastSending || !broadcastMessage.trim()}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', background: '#0369a1', color: 'white', border: 'none', padding: '0.65rem 1.25rem', borderRadius: '8px', fontWeight: 600, fontSize: '0.9rem', cursor: broadcastSending || !broadcastMessage.trim() ? 'not-allowed' : 'pointer', opacity: broadcastSending || !broadcastMessage.trim() ? 0.6 : 1, alignSelf: 'flex-start' }}
+                >
+                  <Send size={15} /> {broadcastSending ? 'Sending…' : 'Send Broadcast'}
+                </button>
+              </div>
+              {broadcastResult && (
+                <div style={{ marginTop: '0.75rem', padding: '0.6rem 0.9rem', borderRadius: '6px', fontSize: '0.85rem', fontWeight: 600, background: broadcastResult.ok ? '#dcfce7' : '#fee2e2', color: broadcastResult.ok ? '#166534' : '#991b1b', border: `1px solid ${broadcastResult.ok ? '#86efac' : '#fca5a5'}` }}>
+                  {broadcastResult.msg}
+                </div>
+              )}
             </div>
 
             {/* Date-wise groups */}

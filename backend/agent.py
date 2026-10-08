@@ -48,7 +48,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[FRONTEND_URL],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
 
@@ -1452,6 +1452,73 @@ async def update_clinic_settings(clinic_id: str, req: ClinicSettingsRequest):
         return JSONResponse(status_code=500, content={"detail": str(e)})
 
 
+# ---------- Broadcast Message Endpoint ----------
+
+class BroadcastRequest(BaseModel):
+    message: str
+
+@app.post("/api/clinics/{clinic_id}/broadcast")
+async def broadcast_message(clinic_id: str, req: BroadcastRequest, background_tasks: BackgroundTasks):
+    """
+    Sends a custom WhatsApp broadcast to all unique patients of the clinic.
+
+    Uses the 'clinic_broadcast' Meta-approved template with two body parameters:
+      {{1}} = clinic name
+      {{2}} = the custom message typed by the receptionist
+
+    Template body (create this in Meta Business Manager → Message Templates):
+      📢 *{{1}}:*\n\n{{2}}\n\nTo stop messages, reply STOP.
+    Category: UTILITY | Language: English | Name: clinic_broadcast
+    """
+    from fastapi.responses import JSONResponse
+    try:
+        if not req.message or not req.message.strip():
+            return JSONResponse(status_code=400, content={"detail": "Message cannot be empty."})
+
+        # Fetch clinic name for the template header
+        clinic_resp = supabase.table("clinics").select("business_name").eq("id", clinic_id).limit(1).execute()
+        clinic_name = (clinic_resp.data[0].get("business_name") if clinic_resp.data else None) or "Your Clinic"
+
+        # Fetch all unique patient phone numbers for this clinic
+        resp = supabase.table("appointments") \
+            .select("phone_number") \
+            .eq("clinic_id", clinic_id) \
+            .execute()
+
+        if not resp.data:
+            return {"status": "success", "count": 0, "message": "No patients to broadcast to."}
+
+        # Deduplicate phone numbers
+        unique_phones = list({r["phone_number"] for r in resp.data if r.get("phone_number")})
+
+        # Build template components
+        # {{1}} = clinic name, {{2}} = custom message
+        components = [
+            {
+                "type": "body",
+                "parameters": [
+                    {"type": "text", "text": clinic_name},
+                    {"type": "text", "text": req.message.strip()},
+                ]
+            }
+        ]
+
+        for phone in unique_phones:
+            background_tasks.add_task(
+                send_whatsapp_template, phone, "clinic_broadcast", components
+            )
+
+        return {
+            "status": "success",
+            "count": len(unique_phones),
+            "message": f"Broadcast queued for {len(unique_phones)} patients.",
+            "template_used": "clinic_broadcast",
+        }
+    except Exception as e:
+        print(f"Error broadcasting message: {e}")
+        return JSONResponse(status_code=500, content={"detail": str(e)})
+
+
 # ---------- Appointment Reminders Endpoint (called by GitHub Actions every 10 min) ----------
 
 class RemindersRequest(BaseModel):
@@ -1690,7 +1757,7 @@ class CancelTokenRequest(BaseModel):
 def api_cancel_token(req: CancelTokenRequest, bg_tasks: BackgroundTasks):
     """Cancels a token and notifies the patient."""
     try:
-        resp = supabase.table("appointments").select("phone_number, token_number").eq("id", req.appointment_id).execute()
+        resp = supabase.table("appointments").select("id, phone_number, token_number").eq("id", req.appointment_id).execute()
         if resp.data:
             apt = resp.data[0]
             clinic_resp = supabase.table("clinics").select("business_name").eq("id", req.clinic_id).execute()

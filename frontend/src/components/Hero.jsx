@@ -28,7 +28,7 @@ const Hero = () => {
         </div>
 
         {/* Brand name */}
-        <div style={{ fontSize: '1rem', fontWeight: 700, letterSpacing: '0.15em', textTransform: 'uppercase', color: 'var(--primary)', marginBottom: '0.5rem' }}>
+        <div style={{ fontSize: '1.4rem', fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--primary)', marginBottom: '0.75rem' }}>
           Clinic Buddy
         </div>
 

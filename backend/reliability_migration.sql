@@ -296,7 +296,7 @@ BEGIN
         'appointment_id', v_id,
         'token_number', v_next,
         'message', format(
-            'Successfully generated Token #%s. The current serving token is #%s. There are %s people ahead of them in the queue. Tell all this info to the patient.',
+            'Successfully generated Token #%s. Current serving: #%s. People ahead: %s.',
             v_next, COALESCE(c.current_serving_token, 0), v_ahead
         )
     );
