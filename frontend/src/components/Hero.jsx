@@ -1,4 +1,4 @@
-import { ArrowRight, MessageSquare, Play, CheckCircle2, Zap } from 'lucide-react';
+import { ArrowRight, MessageSquare, Play } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useRef, useState } from 'react';
@@ -68,52 +68,6 @@ const Hero = () => {
         </div>
       </div>
 
-      {/* ── PRICING ── */}
-      <div id="pricing" style={{ padding: '5rem 1.5rem', background: 'var(--bg-page)', borderTop: '1px solid var(--border-color)' }}>
-        <div style={{ maxWidth: '900px', margin: '0 auto', textAlign: 'center' }}>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', background: '#eff6ff', color: 'var(--primary)', padding: '0.4rem 1rem', borderRadius: '999px', fontSize: '0.8rem', fontWeight: 600, marginBottom: '1.5rem' }}>
-            <Zap size={14} /> Simple, Transparent Pricing
-          </div>
-          <h2 style={{ fontSize: 'clamp(1.75rem, 4vw, 2.5rem)', fontWeight: 800, color: 'var(--text-main)', marginBottom: '0.75rem' }}>
-            Start with a free 1-month trial
-          </h2>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '1rem', marginBottom: '3rem' }}>
-            No hidden charges. Simple flat pricing after your trial.
-          </p>
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1.5rem' }}>
-            {/* Setup */}
-            <div className="card" style={{ padding: '2.5rem', textAlign: 'left', border: '2px solid var(--border-color)' }}>
-              <div style={{ fontSize: '0.8rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-secondary)', marginBottom: '1rem' }}>One-Time Setup</div>
-              <div style={{ fontSize: '2.75rem', fontWeight: 800, color: 'var(--text-main)', lineHeight: 1 }}>₹10,000</div>
-              <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '1.5rem' }}>paid once</div>
-              {['WhatsApp AI integration', 'Clinic dashboard setup', 'Token & timed booking config', 'Team onboarding & training'].map(f => (
-                <div key={f} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.6rem', fontSize: '0.9rem', color: 'var(--text-main)' }}>
-                  <CheckCircle2 size={16} style={{ color: 'var(--v0-green)', flexShrink: 0 }} /> {f}
-                </div>
-              ))}
-            </div>
-
-            {/* Monthly */}
-            <div className="card" style={{ padding: '2.5rem', textAlign: 'left', border: '2px solid var(--primary)', position: 'relative', overflow: 'hidden' }}>
-              <div style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'var(--primary)', color: 'white', padding: '0.25rem 0.75rem', borderRadius: '999px', fontSize: '0.75rem', fontWeight: 700 }}>RECOMMENDED</div>
-              <div style={{ fontSize: '0.8rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-secondary)', marginBottom: '1rem' }}>Monthly Maintenance</div>
-              <div style={{ fontSize: '2.75rem', fontWeight: 800, color: 'var(--primary)', lineHeight: 1 }}>₹1,000</div>
-              <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '1.5rem' }}>per month</div>
-              {['AI bot hosting & uptime', 'WhatsApp message processing', 'Dashboard access for all staff', 'Updates & support'].map(f => (
-                <div key={f} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.6rem', fontSize: '0.9rem', color: 'var(--text-main)' }}>
-                  <CheckCircle2 size={16} style={{ color: 'var(--v0-green)', flexShrink: 0 }} /> {f}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <p style={{ marginTop: '2rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-            Start with a <strong>free 1-month trial</strong> — no payment required upfront.{' '}
-            <Link to="/contact" style={{ color: 'var(--primary)', textDecoration: 'none', fontWeight: 600 }}>Contact us to get started →</Link>
-          </p>
-        </div>
-      </div>
     </>
   );
 };

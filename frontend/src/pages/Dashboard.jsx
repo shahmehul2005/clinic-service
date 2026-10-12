@@ -3,7 +3,7 @@ import imageCompression from 'browser-image-compression';
 import { 
   Home as HomeIcon, Calendar, Users, 
   Search, Clock, CheckCircle2, User, XCircle, LifeBuoy, HeartPulse, Trash2,
-  FileText, Star, Settings, Plus, Minus, Send, Camera, Info
+  FileText, Star, Settings, Plus, Minus, Send, Camera, Info, UserPlus, Image
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useEffect, useState, useMemo, useRef } from 'react';
@@ -51,6 +51,17 @@ const Dashboard = () => {
   const [broadcastMessage, setBroadcastMessage] = useState('');
   const [broadcastSending, setBroadcastSending] = useState(false);
   const [broadcastResult, setBroadcastResult] = useState(null);
+  const [broadcastImageFile, setBroadcastImageFile] = useState(null);
+  const broadcastImageRef = useRef(null);
+  // Permanent vs Trial
+  const [isPermanent, setIsPermanent] = useState(false);
+  const [broadcastCount, setBroadcastCount] = useState(0);
+  // Old Patient Modal
+  const [oldPatientModal, setOldPatientModal] = useState(false);
+  const [oldPatientName, setOldPatientName] = useState('');
+  const [oldPatientPhone, setOldPatientPhone] = useState('');
+  const [oldPatientDate, setOldPatientDate] = useState('');
+  const [oldPatientSaving, setOldPatientSaving] = useState(false);
 
   // Settings state
   const [settings, setSettings] = useState({ google_review_link: '', doctor_name: '', clinic_address: '', consultation_fee: '', maps_link: '', clinic_phone: '' });
@@ -110,20 +121,20 @@ const Dashboard = () => {
     const fetchClinicData = async (cid) => {
       const { data, error } = await supabase
         .from('clinics')
-        .select('business_name, trial_end_date, booking_mode, current_serving_token, google_review_link, doctor_name, clinic_address, consultation_fee, maps_link, clinic_phone')
+        .select('business_name, trial_end_date, booking_mode, current_serving_token, google_review_link, doctor_name, clinic_address, consultation_fee, maps_link, clinic_phone, broadcast_count')
         .eq('id', cid)
         .single();
         
       if (!error && data) {
         setClinicName(data.business_name);
         setBookingMode(data.booking_mode || 'scheduled');
+        // Permanent clinic = trial_end_date is NULL
+        const permanent = !data.trial_end_date;
+        setIsPermanent(permanent);
+        setBroadcastCount(data.broadcast_count || 0);
         // Reset token counter to 0 if it's a new day
-        // (DB stores the counter from yesterday; new day means no one has been served yet)
         const storedToken = data.current_serving_token || 0;
         if (data.booking_mode === 'token' && storedToken > 0) {
-          // Check if any appointment today has been completed/served
-          // We detect a stale counter by checking if today has no completed appointments
-          // but the counter is >0 — meaning it carried over from yesterday
           const todayStr = new Date().toISOString().slice(0, 10);
           const { data: todayDone } = await supabase
             .from('appointments')
@@ -134,7 +145,6 @@ const Dashboard = () => {
             .lte('appointment_time', `${todayStr} 23:59:59`)
             .limit(1);
           if (!todayDone || todayDone.length === 0) {
-            // No completions today — counter is stale, reset it
             setCurrentServingToken(0);
             await supabase.from('clinics').update({ current_serving_token: 0 }).eq('id', cid);
           } else {
@@ -171,19 +181,27 @@ const Dashboard = () => {
     };
     
     initializeDashboard();
+  }, [clinicId]);
 
-    if (!clinicId) return; // Prevent channel subscription if no clinic yet
-
+  // Realtime subscription — set up once clinicId is resolved
+  useEffect(() => {
+    if (!clinicId) return;
     const channel = supabase
-      .channel('custom-all-channel')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments', filter: `clinic_id=eq.${clinicId}` }, (payload) => {
-        fetchAppointments(clinicId);
-      })
+      .channel(`appointments-${clinicId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'appointments', filter: `clinic_id=eq.${clinicId}` },
+        () => {
+          supabase
+            .from('appointments')
+            .select('*')
+            .eq('clinic_id', clinicId)
+            .order('appointment_time', { ascending: true })
+            .then(({ data }) => { if (data) setAppointments(data); });
+        }
+      )
       .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => { supabase.removeChannel(channel); };
   }, [clinicId]);
 
   useEffect(() => {
@@ -615,22 +633,53 @@ const Dashboard = () => {
     }
   };
 
+  // Broadcast image select
+  const handleBroadcastImageSelect = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) { setBroadcastImageFile(null); return; }
+    try {
+      const compressed = await imageCompression(file, { maxSizeMB: 1, maxWidthOrHeight: 1280, useWebWorker: true });
+      setBroadcastImageFile(new File([compressed], file.name, { type: 'image/jpeg' }));
+    } catch { setBroadcastImageFile(file); }
+  };
+
   // Broadcast message handler
   const handleBroadcast = async () => {
-    if (!broadcastMessage.trim()) return;
+    if (!broadcastMessage.trim() && !broadcastImageFile) return;
+    // Trial limit
+    if (!isPermanent && broadcastCount >= 2) {
+      setBroadcastResult({ ok: false, msg: '⚠️ Trial clinics can only send 2 broadcasts. Upgrade to send more.' });
+      return;
+    }
     setBroadcastSending(true);
     setBroadcastResult(null);
     try {
       const apiUrl = import.meta.env.PROD ? (import.meta.env.VITE_API_URL || '') : '';
-      const resp = await fetch(`${apiUrl}/api/clinics/${clinicId}/broadcast`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: broadcastMessage })
-      });
-      const data = await resp.json();
+      let resp, data;
+      if (broadcastImageFile) {
+        const formData = new FormData();
+        formData.append('message', broadcastMessage.trim() || ' ');
+        formData.append('image', broadcastImageFile);
+        resp = await fetch(`${apiUrl}/api/clinics/${clinicId}/broadcast-image`, {
+          method: 'POST',
+          body: formData,
+        });
+      } else {
+        resp = await fetch(`${apiUrl}/api/clinics/${clinicId}/broadcast`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: broadcastMessage })
+        });
+      }
+      data = await resp.json();
       if (resp.ok) {
+        const newCount = broadcastCount + 1;
+        setBroadcastCount(newCount);
+        // Persist count to DB
+        await supabase.from('clinics').update({ broadcast_count: newCount }).eq('id', clinicId);
         setBroadcastResult({ ok: true, msg: `✅ Broadcast sent to ${data.count || 0} patients!` });
         setBroadcastMessage('');
+        setBroadcastImageFile(null);
       } else {
         setBroadcastResult({ ok: false, msg: `❌ Failed: ${data.detail || 'Unknown error'}` });
       }
@@ -638,6 +687,32 @@ const Dashboard = () => {
       setBroadcastResult({ ok: false, msg: '❌ Network error. Check if backend is running.' });
     } finally {
       setBroadcastSending(false);
+    }
+  };
+
+  // Add old patient handler
+  const handleAddOldPatient = async (e) => {
+    e.preventDefault();
+    const cleanPhone = oldPatientPhone.replace(/\D/g, '');
+    if (cleanPhone.length !== 10) { showToast('Phone must be 10 digits', 'error'); return; }
+    if (!oldPatientDate) { showToast('Please select visit date', 'error'); return; }
+    setOldPatientSaving(true);
+    const appointmentDateTime = `${oldPatientDate}T00:00:00+05:30`;
+    const { error } = await supabase.from('appointments').insert([{
+      clinic_id: clinicId,
+      phone_number: cleanPhone,
+      patient_name: oldPatientName.trim(),
+      appointment_time: appointmentDateTime,
+      status: 'completed'
+    }]);
+    setOldPatientSaving(false);
+    if (error) { showToast('Error adding patient: ' + error.message, 'error'); }
+    else {
+      showToast('✅ Old patient data added!');
+      setOldPatientModal(false);
+      setOldPatientName('');
+      setOldPatientPhone('');
+      setOldPatientDate('');
     }
   };
 
@@ -1047,14 +1122,27 @@ const Dashboard = () => {
                     <button
                       onClick={async () => {
                         setPatientDetailSaving(true);
-                        // Store in appointments as metadata on the most recent appointment
-                        const latestApt = [...appointments].filter(a => a.phone_number === patientDetailModal.phone).sort((a,b) => new Date(b.appointment_time)-new Date(a.appointment_time))[0];
-                        if (latestApt) {
-                          await supabase.from('appointments').update({ patient_details: patientDetails }).eq('id', latestApt.id);
+                        try {
+                          // Upsert into patient_details table keyed by (clinic_id, phone_number)
+                          const { error } = await supabase
+                            .from('patient_details')
+                            .upsert({
+                              clinic_id: clinicId,
+                              phone_number: patientDetailModal.phone,
+                              patient_name: patientDetailModal.name,
+                              ...patientDetails,
+                              updated_at: new Date().toISOString()
+                            }, { onConflict: 'clinic_id,phone_number' });
+                          if (error) throw error;
+                          showToast('✅ Patient details saved!');
+                        } catch (err) {
+                          // Fallback: save in latest appointment
+                          const latestApt = [...appointments].filter(a => a.phone_number === patientDetailModal.phone).sort((a,b) => new Date(b.appointment_time)-new Date(a.appointment_time))[0];
+                          if (latestApt) await supabase.from('appointments').update({ patient_details: patientDetails }).eq('id', latestApt.id);
+                          showToast('✅ Patient details saved (legacy mode)');
                         }
                         setPatientDetailSaving(false);
                         setPatientDetailModal(null);
-                        showToast('Patient details saved!');
                       }}
                       className="btn btn-primary"
                       style={{ marginTop: '0.5rem' }}
@@ -1073,43 +1161,106 @@ const Dashboard = () => {
                 <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-main)' }}>{t('dashboard.patientsViewTitle')}</h2>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>{t('dashboard.patientsViewSub')}</p>
               </div>
-              <div style={{ position: 'relative', minWidth: '220px', flex: 1, maxWidth: '320px' }}>
-                <Search size={16} style={{ position: 'absolute', left: '0.875rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
-                <input
-                  type="text"
-                  placeholder="Search name, phone, or date…"
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  className="form-input"
-                  style={{ paddingLeft: '2.5rem', borderRadius: '999px' }}
-                />
+              <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                {/* Add Old Patient — permanent only */}
+                {isPermanent ? (
+                  <button
+                    onClick={() => setOldPatientModal(true)}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', background: '#7c3aed', color: 'white', border: 'none', padding: '0.55rem 1rem', borderRadius: '8px', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer' }}
+                  >
+                    <UserPlus size={15} /> Add Old Patient
+                  </button>
+                ) : (
+                  <button
+                    title="Only available for permanent clinics"
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', background: '#e5e7eb', color: '#9ca3af', border: 'none', padding: '0.55rem 1rem', borderRadius: '8px', fontSize: '0.85rem', fontWeight: 600, cursor: 'not-allowed' }}
+                    disabled
+                  >
+                    <UserPlus size={15} /> Add Old Patient 🔒
+                  </button>
+                )}
+                <div style={{ position: 'relative', minWidth: '200px' }}>
+                  <Search size={16} style={{ position: 'absolute', left: '0.875rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
+                  <input
+                    type="text"
+                    placeholder="Search name, phone, or date…"
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    className="form-input"
+                    style={{ paddingLeft: '2.5rem', borderRadius: '999px' }}
+                  />
+                </div>
               </div>
             </div>
 
+            {/* Old Patient Modal */}
+            {oldPatientModal && (
+              <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+                <div className="card" style={{ width: '100%', maxWidth: '420px', padding: '2rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+                    <h3 style={{ fontWeight: 700, fontSize: '1.1rem', color: 'var(--text-main)' }}>Add Old Patient Data</h3>
+                    <button onClick={() => setOldPatientModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.25rem', color: 'var(--text-secondary)' }}>✕</button>
+                  </div>
+                  <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>Add historical patient records who visited before Clinic Buddy was set up.</p>
+                  <form onSubmit={handleAddOldPatient} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.3rem', textTransform: 'uppercase' }}>Patient Name</label>
+                      <input type="text" required className="form-input" value={oldPatientName} onChange={e => setOldPatientName(e.target.value)} placeholder="e.g. Ramesh Sharma" />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.3rem', textTransform: 'uppercase' }}>Phone Number (10 digits)</label>
+                      <input type="text" required className="form-input" value={oldPatientPhone} onChange={e => setOldPatientPhone(e.target.value.replace(/\D/g, '').slice(0, 10))} placeholder="10-digit number" />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.3rem', textTransform: 'uppercase' }}>Visit Date</label>
+                      <input type="date" required className="form-input" value={oldPatientDate} onChange={e => setOldPatientDate(e.target.value)} />
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
+                      <button type="button" onClick={() => setOldPatientModal(false)} className="btn-v0-outline" style={{ flex: 1, padding: '0.65rem', borderRadius: '6px' }}>Cancel</button>
+                      <button type="submit" disabled={oldPatientSaving} style={{ flex: 1, padding: '0.65rem', borderRadius: '6px', background: '#7c3aed', color: 'white', border: 'none', fontWeight: 600, cursor: oldPatientSaving ? 'not-allowed' : 'pointer' }}>{oldPatientSaving ? 'Saving…' : 'Add Patient'}</button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
             {/* Broadcast Message */}
             <div className="card" style={{ padding: '1.5rem', marginBottom: '1.5rem', background: '#f0f9ff', border: '1px solid #bae6fd' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700, color: '#0369a1', marginBottom: '0.75rem', fontSize: '0.95rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700, color: '#0369a1', marginBottom: '0.25rem', fontSize: '0.95rem' }}>
                 <Send size={16} /> Broadcast Message to All Patients
+                {!isPermanent && <span style={{ marginLeft: 'auto', background: broadcastCount >= 2 ? '#fee2e2' : '#fef9c3', color: broadcastCount >= 2 ? '#991b1b' : '#713f12', border: `1px solid ${broadcastCount >= 2 ? '#fca5a5' : '#fde047'}`, padding: '0.15rem 0.6rem', borderRadius: '999px', fontSize: '0.72rem', fontWeight: 700 }}>{broadcastCount}/2 used (trial)</span>}
               </div>
               <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
                 Send a WhatsApp message to all patients who have visited. Use for holiday notices, new services, etc.
+                {!isPermanent && broadcastCount >= 2 && <strong style={{ color: '#991b1b', display: 'block', marginTop: '0.25rem' }}>🔒 Trial limit reached. Contact us to upgrade for unlimited broadcasts.</strong>}
               </p>
-              <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                 <textarea
                   rows={2}
                   value={broadcastMessage}
                   onChange={e => setBroadcastMessage(e.target.value)}
                   placeholder="Type your broadcast message here…"
                   className="form-input"
-                  style={{ flex: 1, minWidth: '200px', resize: 'vertical', fontFamily: 'inherit' }}
+                  style={{ width: '100%', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }}
+                  disabled={!isPermanent && broadcastCount >= 2}
                 />
-                <button
-                  onClick={handleBroadcast}
-                  disabled={broadcastSending || !broadcastMessage.trim()}
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', background: '#0369a1', color: 'white', border: 'none', padding: '0.65rem 1.25rem', borderRadius: '8px', fontWeight: 600, fontSize: '0.9rem', cursor: broadcastSending || !broadcastMessage.trim() ? 'not-allowed' : 'pointer', opacity: broadcastSending || !broadcastMessage.trim() ? 0.6 : 1, alignSelf: 'flex-start' }}
-                >
-                  <Send size={15} /> {broadcastSending ? 'Sending…' : 'Send Broadcast'}
-                </button>
+                {/* Image attachment for broadcast */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', background: broadcastImageFile ? '#dcfce7' : 'white', border: `1px solid ${broadcastImageFile ? '#86efac' : '#bae6fd'}`, borderRadius: '8px', padding: '0.45rem 0.9rem', fontSize: '0.82rem', fontWeight: 600, color: broadcastImageFile ? '#166534' : '#0369a1', cursor: (!isPermanent && broadcastCount >= 2) ? 'not-allowed' : 'pointer', opacity: (!isPermanent && broadcastCount >= 2) ? 0.5 : 1 }}>
+                    <Image size={14} /> {broadcastImageFile ? `📎 ${broadcastImageFile.name.slice(0,20)}…` : 'Attach Image (optional)'}
+                    <input ref={broadcastImageRef} type="file" accept="image/*" onChange={handleBroadcastImageSelect} style={{ display: 'none' }} disabled={!isPermanent && broadcastCount >= 2} />
+                  </label>
+                  {broadcastImageFile && (
+                    <button type="button" onClick={() => setBroadcastImageFile(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626', fontSize: '0.8rem', fontWeight: 600 }}>✕ Remove</button>
+                  )}
+                  <button
+                    onClick={handleBroadcast}
+                    disabled={broadcastSending || (!broadcastMessage.trim() && !broadcastImageFile) || (!isPermanent && broadcastCount >= 2)}
+                    style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '0.5rem', background: '#0369a1', color: 'white', border: 'none', padding: '0.65rem 1.25rem', borderRadius: '8px', fontWeight: 600, fontSize: '0.9rem', cursor: (broadcastSending || (!broadcastMessage.trim() && !broadcastImageFile) || (!isPermanent && broadcastCount >= 2)) ? 'not-allowed' : 'pointer', opacity: (broadcastSending || (!broadcastMessage.trim() && !broadcastImageFile) || (!isPermanent && broadcastCount >= 2)) ? 0.6 : 1 }}
+                  >
+                    <Send size={15} /> {broadcastSending ? 'Sending…' : 'Send Broadcast'}
+                  </button>
+                </div>
               </div>
               {broadcastResult && (
                 <div style={{ marginTop: '0.75rem', padding: '0.6rem 0.9rem', borderRadius: '6px', fontSize: '0.85rem', fontWeight: 600, background: broadcastResult.ok ? '#dcfce7' : '#fee2e2', color: broadcastResult.ok ? '#166534' : '#991b1b', border: `1px solid ${broadcastResult.ok ? '#86efac' : '#fca5a5'}` }}>
@@ -1178,14 +1329,28 @@ const Dashboard = () => {
                             <td style={{ padding: '1rem 1.25rem' }}>
                               <span style={{ background: '#f1f5f9', padding: '0.2rem 0.7rem', borderRadius: '1rem', fontSize: '0.8rem', fontWeight: 600 }}>{p.visits}</span>
                             </td>
-                            <td style={{ padding: '1rem 1.25rem', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>{new Date(p.lastVisit).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+                            <td style={{ padding: '1rem 1.25rem', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>{new Date(p.lastVisit).toLocaleDateString([], { day: '2-digit', month: 'short', year: 'numeric' })}</td>
                             <td style={{ padding: '1rem 1.25rem', textAlign: 'right' }}>
                               <button
-                                onClick={() => {
+                                onClick={async () => {
                                   setPatientDetailModal(p);
-                                  // Pre-load existing details if any
-                                  const latestApt = [...appointments].filter(a => a.phone_number === p.phone).sort((a,b) => new Date(b.appointment_time)-new Date(a.appointment_time))[0];
-                                  setPatientDetails(latestApt?.patient_details || { age: '', blood_group: '', allergies: '', conditions: '', emergency_contact: '', notes: '' });
+                                  // Load from patient_details table first, then fallback to appointment JSON
+                                  try {
+                                    const { data: pd } = await supabase
+                                      .from('patient_details')
+                                      .select('*')
+                                      .eq('clinic_id', clinicId)
+                                      .eq('phone_number', p.phone)
+                                      .limit(1)
+                                      .single();
+                                    if (pd) {
+                                      setPatientDetails({ age: pd.age || '', blood_group: pd.blood_group || '', allergies: pd.allergies || '', conditions: pd.conditions || '', emergency_contact: pd.emergency_contact || '', notes: pd.notes || '' });
+                                    } else throw new Error('not found');
+                                  } catch {
+                                    // Fallback: latest appointment's patient_details JSON
+                                    const latestApt = [...appointments].filter(a => a.phone_number === p.phone).sort((a,b) => new Date(b.appointment_time)-new Date(a.appointment_time))[0];
+                                    setPatientDetails(latestApt?.patient_details || { age: '', blood_group: '', allergies: '', conditions: '', emergency_contact: '', notes: '' });
+                                  }
                                 }}
                                 style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', background: '#f0f9ff', color: '#0369a1', border: '1px solid #bae6fd', padding: '0.4rem 0.875rem', borderRadius: '8px', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}
                               >

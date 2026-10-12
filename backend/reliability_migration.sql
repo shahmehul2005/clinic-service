@@ -255,8 +255,11 @@ BEGIN
     END IF;
 
     -- Determine base from clinic's own counter (reset if new day)
+    -- v_is_new_day tracks whether we need to reset the serving counter too
     IF c.token_seq_date IS DISTINCT FROM v_today THEN
         v_base := 0;
+        -- New day: serving counter must restart from 0
+        c.current_serving_token := 0;
     ELSE
         v_base := COALESCE(c.last_issued_token, 0);
     END IF;
@@ -277,9 +280,15 @@ BEGIN
     v_base := GREATEST(v_base, v_max_from_apts);
     v_next := v_base + 1;
 
+    -- Persist: update last_issued_token, token_seq_date, and reset current_serving_token
+    -- if this is a new day (so stale counter from yesterday doesn't linger)
     UPDATE clinics
     SET last_issued_token = v_next,
-        token_seq_date = v_today
+        token_seq_date = v_today,
+        current_serving_token = CASE
+            WHEN token_seq_date IS DISTINCT FROM v_today THEN 0
+            ELSE current_serving_token
+        END
     WHERE id = p_clinic_id;
 
     INSERT INTO appointments (

@@ -80,6 +80,8 @@ META_PHONE_NUMBER_ID = os.getenv("META_PHONE_NUMBER_ID")
 META_VERIFY_TOKEN = os.getenv("META_VERIFY_TOKEN", "clinic_os_secure_token_123")
 META_CLIENT_SECRET = os.getenv("META_CLIENT_SECRET")
 ADMIN_PIN = os.getenv("ADMIN_PIN", "123456")
+# Fixed Sanwariya Tech brochure image — upload once to Meta and put the media ID here
+SANWARIYA_BROCHURE_IMAGE_ID = os.getenv("SANWARIYA_BROCHURE_IMAGE_ID", "")
 
 # Database Context Helpers
 def get_patient_name(phone_number: str) -> str:
@@ -1254,6 +1256,14 @@ async def update_appointment_status(appointment_id: str, req: StatusUpdateReques
                         ]
                     }
                 ]
+                # Attach Sanwariya brochure as header image on visit_thanks if configured
+                if template_name == "visit_thanks" and SANWARIYA_BROCHURE_IMAGE_ID:
+                    components.insert(0, {
+                        "type": "header",
+                        "parameters": [
+                            {"type": "image", "image": {"id": SANWARIYA_BROCHURE_IMAGE_ID}}
+                        ]
+                    })
                 background_tasks.add_task(send_whatsapp_template, patient_phone, template_name, components)
                 print(f"Scheduled '{template_name}' template to {patient_phone}")
 
@@ -1522,6 +1532,83 @@ async def broadcast_message(clinic_id: str, req: BroadcastRequest, background_ta
         return JSONResponse(status_code=500, content={"detail": str(e)})
 
 
+# ---------- Broadcast Image Endpoint ----------
+
+@app.post("/api/clinics/{clinic_id}/broadcast-image")
+async def broadcast_image_message(
+    clinic_id: str,
+    background_tasks: BackgroundTasks,
+    message: str = Form(""),
+    image: UploadFile = File(...),
+):
+    """
+    Uploads the image to Meta, then sends it as a broadcast to all unique
+    patients of the clinic. Uses the 'clinic_broadcast_image' template:
+
+      Header: IMAGE ({{1}} = uploaded image)
+      Body:   {{1}} = clinic name, {{2}} = custom caption
+
+    Template: clinic_broadcast_image | Category: UTILITY | Language: English
+    """
+    from fastapi.responses import JSONResponse
+    try:
+        # 1. Upload image to Meta media endpoint
+        img_bytes = await image.read()
+        upload_url = f"https://graph.facebook.com/v18.0/{META_PHONE_NUMBER_ID}/media"
+        upload_headers = {"Authorization": f"Bearer {META_ACCESS_TOKEN}"}
+        upload_files = {
+            "file": (image.filename or "broadcast.jpg", img_bytes, image.content_type or "image/jpeg"),
+            "type": (None, image.content_type or "image/jpeg"),
+            "messaging_product": (None, "whatsapp"),
+        }
+        upload_resp = requests.post(upload_url, headers=upload_headers, files=upload_files)
+        if upload_resp.status_code != 200:
+            return JSONResponse(status_code=502, content={"detail": f"Meta image upload failed: {upload_resp.text}"})
+        media_id = upload_resp.json().get("id")
+        if not media_id:
+            return JSONResponse(status_code=502, content={"detail": "Meta returned no media ID"})
+
+        # 2. Fetch clinic name
+        clinic_resp = supabase.table("clinics").select("business_name").eq("id", clinic_id).limit(1).execute()
+        clinic_name = (clinic_resp.data[0].get("business_name") if clinic_resp.data else None) or "Your Clinic"
+
+        # 3. Fetch all unique patient phone numbers
+        resp = supabase.table("appointments").select("phone_number").eq("clinic_id", clinic_id).execute()
+        if not resp.data:
+            return {"status": "success", "count": 0, "message": "No patients to broadcast to."}
+        unique_phones = list({r["phone_number"] for r in resp.data if r.get("phone_number")})
+
+        # 4. Build components — header image + body text
+        components = [
+            {
+                "type": "header",
+                "parameters": [{"type": "image", "image": {"id": media_id}}]
+            },
+            {
+                "type": "body",
+                "parameters": [
+                    {"type": "text", "text": clinic_name},
+                    {"type": "text", "text": message.strip() or "Please check the image above."},
+                ]
+            }
+        ]
+
+        for phone in unique_phones:
+            background_tasks.add_task(
+                send_whatsapp_template, phone, "clinic_broadcast_image", components
+            )
+
+        return {
+            "status": "success",
+            "count": len(unique_phones),
+            "message": f"Image broadcast queued for {len(unique_phones)} patients.",
+            "template_used": "clinic_broadcast_image",
+        }
+    except Exception as e:
+        print(f"Error in broadcast-image: {e}")
+        return JSONResponse(status_code=500, content={"detail": str(e)})
+
+
 # ---------- Appointment Reminders Endpoint (called by GitHub Actions every 10 min) ----------
 
 class RemindersRequest(BaseModel):
@@ -1730,6 +1817,14 @@ def api_call_next(req: CallNextRequest, bg_tasks: BackgroundTasks):
             patient_name = apt.get("patient_name") or ""
             supabase.table("appointments").update({"status": "completed"}).eq("id", apt["id"]).execute()
             components = [{"type": "body", "parameters": [{"type": "text", "text": clinic_name}]}]
+            # Attach Sanwariya brochure as header image on visit_thanks if configured
+            if SANWARIYA_BROCHURE_IMAGE_ID:
+                components.insert(0, {
+                    "type": "header",
+                    "parameters": [
+                        {"type": "image", "image": {"id": SANWARIYA_BROCHURE_IMAGE_ID}}
+                    ]
+                })
             bg_tasks.add_task(send_whatsapp_template, apt["phone_number"], "visit_thanks", components)
             # Send Google review request if clinic has a review link set
             if google_review_link:
