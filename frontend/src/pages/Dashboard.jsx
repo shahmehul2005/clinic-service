@@ -392,6 +392,27 @@ const Dashboard = () => {
       setNewPatientPhone('');
       setNewDate('');
       setNewTime('');
+
+      // Send WhatsApp confirmation to the patient
+      try {
+        const apiUrl = import.meta.env.PROD ? (import.meta.env.VITE_API_URL || '') : '';
+        const timeDisplay = bookingMode === 'token'
+          ? `Token #${payload.token_number}`
+          : new Date(payload.appointment_time).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+        await fetch(`${apiUrl}/api/appointments/notify-confirmation`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            clinic_id: clinicId,
+            phone_number: payload.phone_number,
+            patient_name: payload.patient_name,
+            appointment_time: timeDisplay,
+            token_number: payload.token_number || null
+          })
+        });
+      } catch (err) {
+        console.log('Confirmation notification failed (non-critical):', err);
+      }
     }
   };
 
@@ -932,9 +953,36 @@ const Dashboard = () => {
                     Last Issued Token: #{todayAppointments.reduce((max, apt) => Math.max(max, apt.token_number || 0), 0)} • Patients Waiting: {Math.max(0, todayAppointments.reduce((max, apt) => Math.max(max, apt.token_number || 0), 0) - currentServingToken)}
                   </div>
                 </div>
-                <button onClick={handleCallNext} style={{ background: 'var(--v0-blue)', color: 'white', border: 'none', padding: '1.5rem 3rem', borderRadius: '12px', fontSize: '1.5rem', fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 14px 0 rgba(10, 102, 194, 0.39)', transition: 'all 0.2s' }}>
-                  CALL NEXT PATIENT
-                </button>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', alignItems: 'flex-end' }}>
+                  <button onClick={handleCallNext} style={{ background: 'var(--v0-blue)', color: 'white', border: 'none', padding: '1.5rem 3rem', borderRadius: '12px', fontSize: '1.5rem', fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 14px 0 rgba(10, 102, 194, 0.39)', transition: 'all 0.2s' }}>
+                    CALL NEXT PATIENT
+                  </button>
+                  {/* Show "Complete Last Patient" when no one is waiting but someone was served */}
+                  {todayAppointments.length === 0 && currentServingToken > 0 && (
+                    <button
+                      onClick={async () => {
+                        if (!window.confirm('Mark the last patient as complete? This will send them a thank-you and review request.')) return;
+                        const apiUrl = import.meta.env.PROD ? (import.meta.env.VITE_API_URL || '') : '';
+                        const resp = await fetch(`${apiUrl}/api/queue/complete-last`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ clinic_id: clinicId, token_number: currentServingToken })
+                        });
+                        if (resp.ok) {
+                          showToast('✅ Last patient completed & thanked!');
+                          // Refresh appointments
+                          const { data } = await supabase.from('appointments').select('*').eq('clinic_id', clinicId).order('appointment_time', { ascending: true });
+                          if (data) setAppointments(data);
+                        } else {
+                          showToast('Failed to complete last patient.', 'error');
+                        }
+                      }}
+                      style={{ background: '#16a34a', color: 'white', border: 'none', padding: '0.85rem 1.75rem', borderRadius: '10px', fontSize: '0.95rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                    >
+                      <CheckCircle2 size={18} /> Complete Last Patient (#{currentServingToken})
+                    </button>
+                  )}
+                </div>
               </div>
             )}
 

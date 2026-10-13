@@ -59,6 +59,7 @@ ID_DAY_AFTER = "date_day_after"
 ID_CONFIRM = "booking_confirm"
 ID_ABORT = "booking_abort"
 ID_BACK = "back_menu"
+ID_CUSTOM_TIME = "slot_custom"
 
 
 def t(lang: str, en: str, hi: str) -> str:
@@ -386,6 +387,12 @@ def _build_slot_list(slots: list, date_str: str, lang: str, date_type: str = "fu
     if not rows:
         return None  # signal caller: no slots available
 
+    # Add "Custom Time" as the last row (cap at 10 total including this)
+    if len(rows) >= 10:
+        rows = rows[:9]  # make room for custom time
+    rows.append({"id": ID_CUSTOM_TIME, "title": t(lang, "⏰ Custom Time", "⏰ अपना समय चुनें"),
+                 "description": t(lang, "Type your preferred time", "अपना पसंदीदा समय टाइप करें")})
+
     return {
         "type": "interactive",
         "interactive_type": "list",
@@ -639,6 +646,14 @@ def handle_turn(text, wf, clinics, phone, now, tools, groq_client=None,
     if step == "slot_select":
         time_str = None
 
+        # "Custom Time" tapped — ask for manual time input
+        if effective == ID_CUSTOM_TIME:
+            wf["step"] = "custom_time"
+            return t(lang,
+                "⏰ Please type your preferred time (e.g. *10:30 AM* or *14:00*).\nIt must be within the clinic's working hours.",
+                "⏰ कृपया अपना पसंदीदा समय टाइप करें (जैसे *10:30 AM* या *14:00*)।\nयह क्लिनिक के कार्य घंटों के भीतर होना चाहिए।"
+            ), wf, False
+
         # Check if list item tapped: ID format is "slot_HH:MM"
         if effective.startswith("slot_"):
             time_str = effective[len("slot_"):]
@@ -658,6 +673,47 @@ def handle_turn(text, wf, clinics, phone, now, tools, groq_client=None,
         wf["pending_time"] = time_str
 
         # Show confirmation button
+        confirm_payload = _build_booking_confirm(wf, lang, date_str, time_str)
+        wf["step"] = "booking_confirm"
+        return confirm_payload, wf, False
+
+    # ── CUSTOM TIME INPUT ─────────────────────────────────────────────────────
+    if step == "custom_time":
+        _, time_str = parse_date_time(text, now)
+        if not time_str:
+            # Try common formats like "10:30 AM", "2:00 PM", "14:00"
+            import re as _re
+            m = _re.search(r'(\d{1,2})[:\.]?(\d{2})\s*(am|pm)?', text.strip().lower())
+            if m:
+                h, mi = int(m.group(1)), int(m.group(2))
+                ampm = m.group(3)
+                if ampm == 'pm' and h != 12:
+                    h += 12
+                elif ampm == 'am' and h == 12:
+                    h = 0
+                if 0 <= h <= 23 and 0 <= mi <= 59:
+                    time_str = f"{h:02d}:{mi:02d}"
+        if not time_str:
+            return t(lang,
+                "❌ Could not understand the time. Please type like *10:30 AM* or *14:00*.",
+                "❌ समय समझ नहीं आया। कृपया *10:30 AM* या *14:00* जैसे लिखें।"
+            ), wf, False
+
+        # Validate against clinic working hours
+        date_str = wf.get("pending_date")
+        avail = tools["check_availability"](wf["clinic_id"], date_str)
+        all_slots = avail.get("all_available_slots") or []
+        working_hours = avail.get("working_hours") or {}
+        start_h = working_hours.get("start", "00:00")
+        end_h = working_hours.get("end", "23:59")
+
+        if time_str < start_h or time_str > end_h:
+            return t(lang,
+                f"❌ The clinic is open from *{start_h}* to *{end_h}*. Please pick a time within these hours.",
+                f"❌ क्लिनिक *{start_h}* से *{end_h}* तक खुला है। कृपया इन घंटों में समय चुनें।"
+            ), wf, False
+
+        wf["pending_time"] = time_str
         confirm_payload = _build_booking_confirm(wf, lang, date_str, time_str)
         wf["step"] = "booking_confirm"
         return confirm_payload, wf, False

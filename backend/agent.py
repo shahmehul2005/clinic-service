@@ -274,6 +274,7 @@ def check_availability(clinic_id: str, date_str: str) -> dict:
             "slot_duration_minutes": duration,
             "all_available_slots": available_slots,
             "suggested_available_slots": suggested,
+            "working_hours": working_hours,
             "instruction": "DO NOT show the full list to the user. Offer ONLY the 'suggested_available_slots'. But if the user asks for a specific time, check if it exists in 'all_available_slots'."
         }
     except Exception as e:
@@ -1798,6 +1799,115 @@ async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):
     except Exception as e:
         print(f"Webhook error: {str(e)}")
         return Response(status_code=200)
+
+# ---------- Dashboard Appointment Confirmation ----------
+
+class NotifyConfirmRequest(BaseModel):
+    clinic_id: str
+    phone_number: str
+    patient_name: str = ""
+    appointment_time: str = ""  # ISO format or display string
+    token_number: int = None
+
+@app.post("/api/appointments/notify-confirmation")
+def api_notify_confirmation(req: NotifyConfirmRequest, bg_tasks: BackgroundTasks):
+    """Sends WhatsApp confirmation when an appointment is added from the dashboard.
+    
+    Uses 'dashboard_booking_confirm' template:
+      Body: Hi {{1}}! Your appointment at {{2}} is confirmed for {{3}}. 🏥
+      
+    Template: dashboard_booking_confirm | Category: UTILITY | Language: English
+    """
+    try:
+        clinic_resp = supabase.table("clinics").select("business_name").eq("id", req.clinic_id).limit(1).execute()
+        clinic_name = (clinic_resp.data[0].get("business_name") if clinic_resp.data else None) or "Clinic"
+        
+        first_name = (req.patient_name or "there").split()[0]
+        # Format time nicely
+        time_display = req.appointment_time
+        if req.token_number:
+            time_display = f"Token #{req.token_number}"
+        
+        components = [
+            {
+                "type": "body",
+                "parameters": [
+                    {"type": "text", "text": first_name},
+                    {"type": "text", "text": clinic_name},
+                    {"type": "text", "text": time_display},
+                ]
+            }
+        ]
+        
+        phone = ''.join(filter(str.isdigit, req.phone_number))
+        if len(phone) == 10:
+            phone = f"91{phone}"
+        
+        bg_tasks.add_task(send_whatsapp_template, phone, "dashboard_booking_confirm", components)
+        
+        return {"status": "success", "message": f"Confirmation sent to {phone}"}
+    except Exception as e:
+        print(f"Error in notify-confirmation: {e}")
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=500, content={"detail": str(e)})
+
+
+# ---------- Complete Last Patient (Token Queue) ----------
+
+class CompleteLastRequest(BaseModel):
+    clinic_id: str
+    token_number: int
+
+@app.post("/api/queue/complete-last")
+def api_complete_last(req: CompleteLastRequest, bg_tasks: BackgroundTasks):
+    """Marks the last patient in token queue as completed and sends visit_thanks + Google review.
+    
+    This solves the gap where the last patient never receives a thank-you because
+    'call-next' only sends it when a subsequent patient exists.
+    """
+    try:
+        resp1 = supabase.table("appointments") \
+            .select("id, phone_number, patient_name") \
+            .eq("clinic_id", req.clinic_id) \
+            .eq("token_number", req.token_number) \
+            .order("created_at", desc=True).limit(1).execute()
+        
+        if not resp1.data:
+            from fastapi.responses import JSONResponse
+            return JSONResponse(status_code=404, content={"detail": "Appointment not found"})
+        
+        apt = resp1.data[0]
+        clinic_resp = supabase.table("clinics").select("business_name, google_review_link").eq("id", req.clinic_id).execute()
+        clinic_row = clinic_resp.data[0] if clinic_resp.data else {}
+        clinic_name = clinic_row.get("business_name") or "our clinic"
+        google_review_link = clinic_row.get("google_review_link")
+        patient_name = apt.get("patient_name") or ""
+        
+        # Mark as completed
+        supabase.table("appointments").update({"status": "completed"}).eq("id", apt["id"]).execute()
+        
+        # Send visit_thanks
+        components = [{"type": "body", "parameters": [{"type": "text", "text": clinic_name}]}]
+        if SANWARIYA_BROCHURE_IMAGE_ID:
+            components.insert(0, {
+                "type": "header",
+                "parameters": [
+                    {"type": "image", "image": {"id": SANWARIYA_BROCHURE_IMAGE_ID}}
+                ]
+            })
+        bg_tasks.add_task(send_whatsapp_template, apt["phone_number"], "visit_thanks", components)
+        
+        # Send Google review request
+        if google_review_link:
+            bg_tasks.add_task(send_google_review_request, apt["phone_number"], patient_name, clinic_name, req.clinic_id)
+        
+        return {"status": "success", "message": f"Last patient (Token #{req.token_number}) completed and thanked."}
+    except Exception as e:
+        print(f"Error in complete-last: {e}")
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=500, content={"detail": str(e)})
+
+
 class CallNextRequest(BaseModel):
     clinic_id: str
     current_token: int
