@@ -80,8 +80,28 @@ META_PHONE_NUMBER_ID = os.getenv("META_PHONE_NUMBER_ID")
 META_VERIFY_TOKEN = os.getenv("META_VERIFY_TOKEN", "clinic_os_secure_token_123")
 META_CLIENT_SECRET = os.getenv("META_CLIENT_SECRET")
 ADMIN_PIN = os.getenv("ADMIN_PIN", "123456")
-# Fixed Sanwariya Tech brochure image — upload once to Meta and put the media ID here
-SANWARIYA_BROCHURE_IMAGE_ID = os.getenv("SANWARIYA_BROCHURE_IMAGE_ID", "")
+# Fixed Sanwariya Tech brochure image — can be a Supabase public URL (recommended) or Meta Media ID
+SANWARIYA_BROCHURE_IMAGE = os.getenv("SANWARIYA_BROCHURE_IMAGE_URL", os.getenv("SANWARIYA_BROCHURE_IMAGE_ID", "")).strip()
+
+def get_brochure_header_component():
+    """Builds the WhatsApp template header component for Sanwariya brochure (supports public URL or Meta Media ID)."""
+    if not SANWARIYA_BROCHURE_IMAGE:
+        return None
+    if SANWARIYA_BROCHURE_IMAGE.startswith("http://") or SANWARIYA_BROCHURE_IMAGE.startswith("https://"):
+        return {
+            "type": "header",
+            "parameters": [
+                {"type": "image", "image": {"link": SANWARIYA_BROCHURE_IMAGE}}
+            ]
+        }
+    else:
+        return {
+            "type": "header",
+            "parameters": [
+                {"type": "image", "image": {"id": SANWARIYA_BROCHURE_IMAGE}}
+            ]
+        }
+
 
 # Database Context Helpers
 def get_patient_name(phone_number: str) -> str:
@@ -1258,13 +1278,9 @@ async def update_appointment_status(appointment_id: str, req: StatusUpdateReques
                     }
                 ]
                 # Attach Sanwariya brochure as header image on visit_thanks if configured
-                if template_name == "visit_thanks" and SANWARIYA_BROCHURE_IMAGE_ID:
-                    components.insert(0, {
-                        "type": "header",
-                        "parameters": [
-                            {"type": "image", "image": {"id": SANWARIYA_BROCHURE_IMAGE_ID}}
-                        ]
-                    })
+                brochure_hdr = get_brochure_header_component()
+                if template_name == "visit_thanks" and brochure_hdr:
+                    components.insert(0, brochure_hdr)
                 background_tasks.add_task(send_whatsapp_template, patient_phone, template_name, components)
                 print(f"Scheduled '{template_name}' template to {patient_phone}")
 
@@ -1888,13 +1904,9 @@ def api_complete_last(req: CompleteLastRequest, bg_tasks: BackgroundTasks):
         
         # Send visit_thanks
         components = [{"type": "body", "parameters": [{"type": "text", "text": clinic_name}]}]
-        if SANWARIYA_BROCHURE_IMAGE_ID:
-            components.insert(0, {
-                "type": "header",
-                "parameters": [
-                    {"type": "image", "image": {"id": SANWARIYA_BROCHURE_IMAGE_ID}}
-                ]
-            })
+        brochure_hdr = get_brochure_header_component()
+        if brochure_hdr:
+            components.insert(0, brochure_hdr)
         bg_tasks.add_task(send_whatsapp_template, apt["phone_number"], "visit_thanks", components)
         
         # Send Google review request
@@ -1928,13 +1940,9 @@ def api_call_next(req: CallNextRequest, bg_tasks: BackgroundTasks):
             supabase.table("appointments").update({"status": "completed"}).eq("id", apt["id"]).execute()
             components = [{"type": "body", "parameters": [{"type": "text", "text": clinic_name}]}]
             # Attach Sanwariya brochure as header image on visit_thanks if configured
-            if SANWARIYA_BROCHURE_IMAGE_ID:
-                components.insert(0, {
-                    "type": "header",
-                    "parameters": [
-                        {"type": "image", "image": {"id": SANWARIYA_BROCHURE_IMAGE_ID}}
-                    ]
-                })
+            brochure_hdr = get_brochure_header_component()
+            if brochure_hdr:
+                components.insert(0, brochure_hdr)
             bg_tasks.add_task(send_whatsapp_template, apt["phone_number"], "visit_thanks", components)
             # Send Google review request if clinic has a review link set
             if google_review_link:
